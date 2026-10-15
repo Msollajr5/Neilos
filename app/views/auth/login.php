@@ -16,9 +16,25 @@
 <div class="login-page">
   <div class="login-card">
     <div class="login-logo">
-      <img src="<?= APP_URL ?>/assets/img/logo.png?v=2" alt="Neilos" class="login-logo-img">
+      <img src="<?= APP_URL ?>/assets/img/logo.png?v=4" alt="Neilos" class="login-logo-img">
       <div class="login-subtitle">Sign in to your account</div>
     </div>
+
+    <?php if (($_GET['reason'] ?? '') === 'timeout'): ?>
+    <div class="alert alert-warning" style="display:flex;align-items:flex-start;gap:10px;margin-bottom:18px;background:#fffbeb;border:1px solid #fcd34d;color:#92400e;padding:12px 14px;border-radius:var(--radius-sm);font-size:0.88rem;line-height:1.4">
+      <svg style="flex-shrink:0;margin-top:2px" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <div>
+        <strong>Session Timed Out:</strong> You have been signed out due to 15 minutes of inactivity. Please sign in again.
+      </div>
+    </div>
+    <?php elseif (($_GET['reason'] ?? '') === 'expired'): ?>
+    <div class="alert alert-warning" style="display:flex;align-items:flex-start;gap:10px;margin-bottom:18px;background:#fffbeb;border:1px solid #fcd34d;color:#92400e;padding:12px 14px;border-radius:var(--radius-sm);font-size:0.88rem;line-height:1.4">
+      <svg style="flex-shrink:0;margin-top:2px" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <div>
+        <strong>Password Expired:</strong> Your password has exceeded the 90-day validity period. Please sign in to choose a new password.
+      </div>
+    </div>
+    <?php endif; ?>
 
     <?php if ($loginError): ?>
     <div class="alert alert-danger">
@@ -44,7 +60,12 @@
       </div>
 
       <div class="form-group">
-        <label for="password">Password</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <label for="password" style="margin:0">Password</label>
+          <a href="<?= APP_URL ?>/?page=forgot_password" style="font-size:0.8rem;color:var(--primary);text-decoration:none;font-weight:500">
+            Forgot password?
+          </a>
+        </div>
         <div class="input-group">
           <input type="password" id="password" name="password" class="form-control" required
                  placeholder="Enter your password" autocomplete="current-password"
@@ -61,10 +82,7 @@
       </button>
     </form>
 
-    <div class="divider"></div>
-    <div style="text-align:center;font-size:.78rem;color:var(--text-muted)">
-      Demo credentials: <strong>admin / Admin@1234</strong> | <strong>partner_fastnet / Admin@1234</strong> | <strong>bsa_sarah / Admin@1234</strong>
-    </div>
+
     <div style="text-align:center;font-size:.72rem;color:var(--text-muted);margin-top:20px">
       &copy; <?= date('Y') ?> Neilos Network · Partner Portal v1.0
     </div>

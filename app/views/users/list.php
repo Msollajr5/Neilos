@@ -42,24 +42,24 @@
       <thead>
         <tr>
           <th>Full Name</th>
-          <th>Username</th>
-          <th>Email</th>
           <th>Role</th>
           <th>Status</th>
-          <th>Last Login</th>
           <th>Created</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         <?php if (empty($users)): ?>
-        <tr><td colspan="8"><div class="empty-state"><?= svgIcon('users', 32) ?><div class="empty-state-title">No users found</div><div class="empty-state-text">Try adjusting your filters or create a new user.</div></div></td></tr>
+        <tr><td colspan="5"><div class="empty-state"><?= svgIcon('users', 32) ?><div class="empty-state-title">No users found</div><div class="empty-state-text">Try adjusting your filters or create a new user.</div></div></td></tr>
         <?php else: ?>
         <?php foreach ($users as $u): ?>
         <tr>
-          <td><a href="<?= APP_URL ?>/?page=users&action=detail&id=<?= $u['id'] ?>" class="font-600" style="color:var(--primary)"><?= e($u['full_name']) ?></a></td>
-          <td class="font-sm"><?= e($u['username']) ?></td>
-          <td class="font-sm"><?= e($u['email']) ?></td>
+          <td>
+            <a href="<?= APP_URL ?>/?page=users&action=detail&id=<?= $u['id'] ?>" class="font-600" style="color:var(--primary)">
+              <?= e($u['full_name']) ?>
+            </a>
+            <div class="font-sm text-muted" style="font-size:0.75rem"><?= e($u['email']) ?></div>
+          </td>
           <td>
             <?php 
               $displayRole = $u['role'] ?? '';
@@ -78,24 +78,25 @@
             <span class="badge badge-danger">Inactive</span>
             <?php endif; ?>
           </td>
-          <td class="text-muted font-sm"><?= $u['last_login'] ? fmtDateTime($u['last_login']) : 'Never' ?></td>
           <td class="text-muted font-sm"><?= fmtDate($u['created_at']) ?></td>
           <td>
             <div class="actions">
-              <a href="<?= APP_URL ?>/?page=users&action=detail&id=<?= $u['id'] ?>" class="btn btn-secondary btn-sm btn-icon" title="View"><?= svgIcon('eye') ?></a>
-              <a href="<?= APP_URL ?>/?page=users&action=edit&id=<?= $u['id'] ?>" class="btn btn-secondary btn-sm btn-icon" title="Edit"><?= svgIcon('edit') ?></a>
+              <a href="<?= APP_URL ?>/?page=users&action=detail&id=<?= $u['id'] ?>" class="btn btn-secondary btn-sm" title="View User" style="display:inline-flex;align-items:center;gap:4px;font-size:0.78rem;padding:4px 10px">
+                <?= svgIcon('eye', 13) ?> View
+              </a>
+              <a href="<?= APP_URL ?>/?page=users&action=edit&id=<?= $u['id'] ?>" class="btn btn-secondary btn-sm btn-icon" title="Edit"><?= svgIcon('edit', 13) ?></a>
               <form method="POST" action="<?= APP_URL ?>/?page=users&action=toggle_status" style="display:inline" data-confirm="<?= $u['is_active'] ? 'Deactivate' : 'Activate' ?> this user?">
                 <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
                 <input type="hidden" name="id" value="<?= $u['id'] ?>">
                 <button type="submit" class="btn btn-sm <?= $u['is_active'] ? 'btn-secondary' : 'btn-primary' ?> btn-icon" title="<?= $u['is_active'] ? 'Deactivate' : 'Activate' ?>">
-                  <?= svgIcon($u['is_active'] ? 'x' : 'check') ?>
+                  <?= svgIcon($u['is_active'] ? 'x' : 'check', 13) ?>
                 </button>
               </form>
               <?php if ((isAdmin() || hasRole('Management')) && $u['id'] !== currentUser()['id']): ?>
               <form method="POST" action="<?= APP_URL ?>/?page=users&action=delete" style="display:inline" data-confirm="Permanently delete user <?= e($u['full_name']) ?>?">
                 <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
                 <input type="hidden" name="id" value="<?= $u['id'] ?>">
-                <button type="submit" class="btn btn-danger btn-sm btn-icon" title="Delete User"><?= svgIcon('trash') ?></button>
+                <button type="submit" class="btn btn-danger btn-sm btn-icon" title="Delete User"><?= svgIcon('trash', 13) ?></button>
               </form>
               <?php endif; ?>
             </div>

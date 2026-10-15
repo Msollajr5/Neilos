@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
         revealObserver.unobserve(entry.target);
       }
     });
-  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+  }, { threshold: 0, rootMargin: '50px 0px 50px 0px' });
 
   // Auto-apply reveal to key elements
   const revealSelectors = [
@@ -156,86 +156,103 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ──────────────────────────────────────────────────────────
-  // Sidebar Toggle (mobile overlay)
+  // Sidebar Toggle — single source of truth across ALL breakpoints
   // ──────────────────────────────────────────────────────────
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
   const toggleBtn = document.getElementById('sidebarToggle');
 
+  /** True when we are in drawer/mobile mode (≤ 1024px) */
+  function isMobileMode() {
+    return window.innerWidth <= 1024;
+  }
+
+  /** Open the sidebar drawer (mobile/tablet) */
   function openSidebar() {
-    sidebar?.classList.add('open');
-    overlay?.classList.add('open');
-    document.body.style.overflow = 'hidden';
+    if (!sidebar) return;
+    sidebar.classList.add('open');
+    if (overlay) overlay.classList.add('open');
   }
 
+  /** Close the sidebar drawer (mobile/tablet) */
   function closeSidebar() {
-    sidebar?.classList.remove('open');
-    overlay?.classList.remove('open');
-    document.body.style.overflow = '';
+    if (!sidebar) return;
+    sidebar.classList.remove('open');
+    if (overlay) overlay.classList.remove('open');
   }
 
+  /** Toggle desktop collapsed/expanded (icon-only) state */
   function toggleSidebarDesktop() {
     if (!sidebar) return;
-    if (sidebar.classList.contains('collapsed')) {
-      sidebar.classList.remove('collapsed');
-      localStorage.setItem('neilos_sidebar_collapsed', '0');
+    const isCollapsed = sidebar.classList.toggle('collapsed');
+    try { localStorage.setItem('neilos_sidebar_collapsed', isCollapsed ? '1' : '0'); } catch(e) {}
+  }
+
+  /** Universal toggle (used by topbar hamburger) */
+  function toggleSidebar() {
+    if (isMobileMode()) {
+      sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
     } else {
-      sidebar.classList.add('collapsed');
-      localStorage.setItem('neilos_sidebar_collapsed', '1');
+      toggleSidebarDesktop();
     }
   }
 
+  // Original Topbar hamburger click (sole toggle button)
   if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => {
-      if (window.innerWidth > 1024) {
-        toggleSidebarDesktop();
-      } else {
-        sidebar?.classList.contains('open') ? closeSidebar() : openSidebar();
-      }
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleSidebar();
     });
   }
 
+  // Overlay backdrop click closes drawer on mobile/tablet
   if (overlay) {
-    overlay.addEventListener('click', closeSidebar);
+    overlay.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeSidebar();
+    });
   }
 
-  // Auto-close drawer on mobile when a navigation link is clicked
+  // Nav link click on mobile/tablet: close the drawer so user sees content
   document.querySelectorAll('.sidebar-nav .nav-link').forEach(link => {
     link.addEventListener('click', () => {
-      if (window.innerWidth <= 1024) {
-        closeSidebar();
-      }
+      if (isMobileMode()) closeSidebar();
     });
   });
 
-  // Double click logo or press Ctrl+B to toggle sidebar collapse
-  const logo = document.querySelector('.sidebar-logo');
-  if (logo) {
-    logo.addEventListener('click', () => {
-      if (window.innerWidth > 1024) toggleSidebarDesktop();
-    });
-  }
-
-  // Keyboard shortcut Ctrl+B / Cmd+B to show/hide navigation menu
+  // Keyboard shortcut Ctrl+B / Cmd+B and Escape
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
       e.preventDefault();
-      if (window.innerWidth > 1024) {
-        toggleSidebarDesktop();
-      } else {
-        sidebar?.classList.contains('open') ? closeSidebar() : openSidebar();
-      }
+      toggleSidebar();
+    }
+    if (e.key === 'Escape' && isMobileMode() && sidebar?.classList.contains('open')) {
+      closeSidebar();
     }
   });
 
-  // Handle resize: close mobile sidebar on desktop
-  let resizeTimer;
+  // Resize: sync state when crossing the 1024px breakpoint
+  let _resizeTimer;
+  let _wasDesktopMode = !isMobileMode();
   window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      if (window.innerWidth > 1024) closeSidebar();
-    }, 200);
+    clearTimeout(_resizeTimer);
+    _resizeTimer = setTimeout(() => {
+      const nowDesktop = !isMobileMode();
+      if (nowDesktop !== _wasDesktopMode) {
+        _wasDesktopMode = nowDesktop;
+        if (nowDesktop) {
+          // Just went desktop: close any open mobile drawer
+          closeSidebar();
+        } else {
+          // Just went mobile: remove collapsed class, close drawer
+          if (sidebar) sidebar.classList.remove('collapsed');
+          closeSidebar();
+        }
+      }
+    }, 150);
   });
+
+
 
   // ──────────────────────────────────────────────────────────
   // Sidebar Scroll Position Lock & Persistence
@@ -819,9 +836,201 @@ if (document.readyState === 'loading') {
   initAccountLookupSystem();
 }
 
+// Print helper for modal iframe (Service Order Form, etc.)
+function printModalIframe() {
+  const body = document.getElementById('globalFileModalBody');
+  if (!body) return;
+  const iframe = body.querySelector('iframe');
+  if (iframe) {
+    try {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        return;
+      }
+    } catch(e) {
+      console.warn('Iframe print error, falling back to window.open', e);
+    }
+  }
+  const fullPageBtn = document.getElementById('globalFileModalFullPageBtn');
+  if (fullPageBtn && fullPageBtn.href) {
+    window.open(fullPageBtn.href, '_blank');
+  }
+}
+window.printModalIframe = printModalIframe;
+
 // System-wide Global File Viewer Modal Handler
+function ensureGlobalFileViewModal() {
+  let modal = document.getElementById('neilosGlobalFileViewModal');
+  if (modal) return modal;
+
+  modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.id = 'neilosGlobalFileViewModal';
+  modal.style.zIndex = '999999';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:880px;width:94%;padding:0;overflow:hidden;border-radius:var(--radius-lg,12px);box-shadow:var(--shadow-lg,0 10px 25px rgba(0,0,0,0.2));border:1px solid var(--border,#e2e8f0);background:var(--surface,#ffffff)">
+      <div style="background:var(--accent-pale,#f1f5f9);padding:16px 20px;border-bottom:1px solid var(--border,#e2e8f0);display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:38px;height:38px;border-radius:10px;background:rgba(15,76,129,0.12);color:var(--accent,#0f4c81);display:flex;align-items:center;justify-content:center;font-size:1.2rem">
+            📄
+          </div>
+          <div>
+            <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:var(--text-primary,#1e293b)" id="globalFileModalTitle">Document Preview</h3>
+            <div style="font-size:0.8rem;color:var(--text-muted,#64748b)" id="globalFileModalSubtitle">Neilos Network Document Viewer</div>
+          </div>
+        </div>
+        <button type="button" class="modal-close" onclick="closeGlobalFileViewModal()" style="background:none;border:none;font-size:1.5rem;color:var(--text-muted,#64748b);cursor:pointer;line-height:1">&times;</button>
+      </div>
+
+      <div style="padding:18px 20px;max-height:75vh;overflow-y:auto" id="globalFileModalBody">
+      </div>
+
+      <div style="padding:12px 20px;border-top:1px solid var(--border,#e2e8f0);background:var(--surface-2,#f8fafc);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div class="text-muted font-sm" id="globalFileModalFooterHint" style="font-size:.825rem;color:var(--text-muted,#64748b)">Need an offline copy? Click Download to save to your device.</div>
+        <div style="display:flex;gap:10px;align-items:center" id="globalFileModalFooterActions">
+          <button type="button" id="globalFileModalPrintBtn" class="btn btn-primary btn-sm" onclick="printModalIframe()" style="display:none;padding:6px 14px;border-radius:6px;font-size:.85rem;align-items:center;gap:6px;cursor:pointer">
+            🖨 Print / Save as PDF
+          </button>
+          <a href="#" id="globalFileModalFullPageBtn" target="_blank" class="btn btn-secondary btn-sm" style="display:none;text-decoration:none;padding:6px 14px;border-radius:6px;font-size:.85rem">
+            ↗ Full Page
+          </a>
+          <a href="#" id="globalFileModalDownloadBtn" class="btn btn-primary btn-sm" style="text-decoration:none;padding:6px 14px;border-radius:6px;font-size:.85rem;display:inline-flex;align-items:center;gap:6px">
+            💾 Download File
+          </a>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeGlobalFileViewModal()" style="padding:6px 14px;border-radius:6px;font-size:.85rem">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeGlobalFileViewModal();
+    }
+  });
+
+  return modal;
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true' || window.docx || window.JSZip) return resolve();
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', (e) => reject(e));
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    };
+    script.onerror = (e) => reject(e);
+    document.head.appendChild(script);
+  });
+}
+
+function ensureDocxStyles() {
+  if (document.getElementById('docxPreviewStyles')) return;
+  const style = document.createElement('style');
+  style.id = 'docxPreviewStyles';
+  style.textContent = `
+    .docx-preview-wrapper {
+      background: #ffffff !important;
+      color: #1e293b !important;
+      font-family: Calibri, 'Segoe UI', Arial, sans-serif !important;
+      line-height: 1.6 !important;
+      font-size: 0.95rem !important;
+      word-wrap: break-word !important;
+    }
+    .docx-preview-wrapper p {
+      margin-bottom: 10px !important;
+    }
+    .docx-preview-wrapper h1, .docx-preview-wrapper h2, .docx-preview-wrapper h3, .docx-preview-wrapper h4 {
+      color: #0f172a !important;
+      margin-top: 16px !important;
+      margin-bottom: 8px !important;
+      font-weight: 700 !important;
+    }
+    .docx-preview-wrapper table {
+      border-collapse: collapse !important;
+      width: 100% !important;
+      margin: 14px 0 !important;
+    }
+    .docx-preview-wrapper th, .docx-preview-wrapper td {
+      border: 1px solid #cbd5e1 !important;
+      padding: 8px 12px !important;
+    }
+    .docx-preview-wrapper img {
+      max-width: 100% !important;
+      height: auto !important;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+async function renderDocxContent(docUrl, containerId, loadingId) {
+  const container = document.getElementById(containerId);
+  const loading = document.getElementById(loadingId);
+  if (!container || !loading) return;
+
+  ensureDocxStyles();
+
+  try {
+    // Ensure JSZip and docx-preview libraries are available
+    if (typeof window.JSZip === 'undefined') {
+      await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+    }
+    if (typeof window.docx === 'undefined' || !window.docx.renderAsync) {
+      await loadScript('https://cdn.jsdelivr.net/npm/docx-preview@0.3.3/dist/docx-preview.min.js');
+    }
+
+    const response = await fetch(docUrl, { credentials: 'same-origin' });
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+
+    const blob = await response.blob();
+    loading.style.display = 'none';
+    container.style.display = 'block';
+    container.innerHTML = '';
+
+    if (window.docx && window.docx.renderAsync) {
+      await window.docx.renderAsync(blob, container, null, {
+        className: 'docx-preview-wrapper',
+        inWrapper: false,
+        ignoreWidth: false,
+        ignoreHeight: false,
+        ignoreFonts: false,
+        breakPages: true,
+        experimental: true,
+        trimXml: true
+      });
+    } else {
+      throw new Error('DOCX preview renderer library unavailable');
+    }
+  } catch (err) {
+    console.error('DOCX preview rendering error:', err);
+    if (loading) {
+      loading.innerHTML = `
+        <div style="font-size:2.4rem;margin-bottom:12px">⚠️</div>
+        <div style="font-weight:700;font-size:1.05rem;color:var(--text-primary,#1e293b);margin-bottom:6px">Unable to preview this document.</div>
+        <div style="font-size:0.875rem;color:var(--text-muted,#64748b);max-width:440px;margin:0 auto 16px">The file could not be parsed for browser display. You can download and inspect it directly.</div>
+      `;
+      loading.style.display = 'block';
+    }
+    if (container) container.style.display = 'none';
+  }
+}
+
 function viewSystemFile(fileUrl, fileName, downloadUrl, metadata = {}) {
-  const modal = document.getElementById('neilosGlobalFileViewModal');
+  const modal = ensureGlobalFileViewModal();
   const title = document.getElementById('globalFileModalTitle');
   const subtitle = document.getElementById('globalFileModalSubtitle');
   const body = document.getElementById('globalFileModalBody');
@@ -840,7 +1049,7 @@ function viewSystemFile(fileUrl, fileName, downloadUrl, metadata = {}) {
     }
   }
 
-  // If downloadUrl is provided and points to download controller, prefer inline download controller URL
+  // Ensure View requests route with inline preview parameter
   if (downloadUrl && (downloadUrl.includes('page=download') || downloadUrl.includes('page=orders&action=generate_sof'))) {
     resolvedViewUrl = downloadUrl + (downloadUrl.includes('inline=1') ? '' : '&inline=1');
   } else if (resolvedViewUrl.includes('page=download') && !resolvedViewUrl.includes('inline=1')) {
@@ -848,57 +1057,162 @@ function viewSystemFile(fileUrl, fileName, downloadUrl, metadata = {}) {
   }
 
   if (title) title.textContent = fileName || 'Document Preview';
-  if (subtitle) subtitle.textContent = metadata.subtitle || 'In-App Document Preview';
-  if (downloadBtn) {
-    downloadBtn.href = downloadUrl || fileUrl;
-    downloadBtn.setAttribute('download', fileName || '');
+  const isSof = (downloadUrl || fileUrl || '').includes('generate_sof') || (metadata.doc_type || '').toLowerCase().includes('service order form') || (fileName || '').startsWith('SOF_');
+
+  const printBtn = document.getElementById('globalFileModalPrintBtn');
+  const fullPageBtn = document.getElementById('globalFileModalFullPageBtn');
+  const footerHint = document.getElementById('globalFileModalFooterHint');
+
+  if (isSof) {
+    if (printBtn) printBtn.style.display = 'inline-flex';
+    if (fullPageBtn) {
+      fullPageBtn.style.display = 'inline-flex';
+      fullPageBtn.href = resolvedViewUrl.replace(/&inline=1/g, '');
+    }
+    if (downloadBtn) downloadBtn.style.display = 'none';
+    if (footerHint) footerHint.textContent = 'Print or save this pre-filled Service Order Form directly as a clean PDF.';
+  } else {
+    if (printBtn) printBtn.style.display = 'none';
+    if (fullPageBtn) fullPageBtn.style.display = 'none';
+    if (downloadBtn) {
+      downloadBtn.style.display = 'inline-flex';
+      downloadBtn.href = downloadUrl || fileUrl || resolvedViewUrl.replace(/&inline=1/g, '');
+      downloadBtn.setAttribute('download', fileName || 'download');
+    }
+    if (footerHint) footerHint.textContent = 'Need an offline copy? Click Download to save to your device.';
   }
 
-  const ext = (fileName || fileUrl || '').split('?')[0].split('.').pop().toLowerCase();
-  const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext);
+  // Safe file extension extraction
+  function extractExt(str) {
+    if (!str) return '';
+    const clean = str.split('?')[0].split('#')[0];
+    const match = clean.match(/\.([a-zA-Z0-9]+)$/);
+    return match ? match[1].toLowerCase() : '';
+  }
+
+  let ext = extractExt(fileUrl) || extractExt(fileName) || extractExt(downloadUrl);
+  if (!ext && (metadata.doc_type || '').toLowerCase().includes('photo')) ext = 'jpg';
+  if (!ext && (metadata.doc_type || '').toLowerCase().includes('site photo')) ext = 'jpg';
+  if (!ext && (metadata.doc_type || '').toLowerCase().includes('signal test')) ext = 'jpg';
+  if (!ext && (metadata.doc_type || '').toLowerCase().includes('speed test')) ext = 'png';
+  if (!ext && (metadata.doc_type || '').toLowerCase().includes('ping test')) ext = 'png';
+  if (!ext && (metadata.doc_type || '').toLowerCase().includes('pdf')) ext = 'pdf';
+  if (!ext && (fileName || '').toLowerCase().includes('.pdf')) ext = 'pdf';
+  if (!ext && (fileName || '').toLowerCase().includes('.docx')) ext = 'docx';
+  if (!ext && (fileName || '').toLowerCase().includes('.doc')) ext = 'doc';
+  if (!ext && (fileName || '').toLowerCase().includes('.jpg')) ext = 'jpg';
+  if (!ext && (fileName || '').toLowerCase().includes('.png')) ext = 'png';
+  if (!ext && (fileName || '').toLowerCase().includes('.jpeg')) ext = 'jpeg';
+  if (!ext && (downloadUrl || '').toLowerCase().includes('generate_sof')) ext = 'pdf';
+
+  const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'heic', 'bmp', 'jfif'].includes(ext);
   const isPdf = (ext === 'pdf');
+  const isDocx = (ext === 'docx' || ext === 'doc');
+  const isText = ['txt', 'log', 'csv', 'json', 'xml', 'html'].includes(ext);
 
   let previewHtml = '';
-  if (isImg) {
-    previewHtml = `<div style="text-align:center;background:var(--surface-1);border:1px solid var(--border);border-radius:8px;padding:16px;max-height:500px;overflow:auto;margin-bottom:16px">
-      <img src="${resolvedViewUrl}" alt="${fileName}" style="max-height:460px;max-width:100%;object-fit:contain;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,0.1)">
+  let postRenderCallback = null;
+
+  if (isSof) {
+    previewHtml = `<div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <span style="font-size:0.85rem;color:var(--text-muted,#64748b)">Service Order Form (SOF) Preview</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button type="button" class="btn btn-xs btn-primary" onclick="printModalIframe()" style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;padding:4px 10px;border-radius:4px;cursor:pointer">
+            🖨 Print / Save as PDF
+          </button>
+          <a href="${resolvedViewUrl.replace(/&inline=1/g, '')}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-primary" style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;padding:4px 10px;border-radius:4px;text-decoration:none">
+            ↗ Full Page
+          </a>
+        </div>
+      </div>
+      <div style="width:100%;height:540px;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid var(--border,#e2e8f0)">
+        <iframe src="${resolvedViewUrl}" style="width:100%;height:100%;border:none;background:#ffffff"></iframe>
+      </div>
+    </div>`;
+  } else if (isImg) {
+    previewHtml = `<div style="text-align:center;background:var(--surface-1,#f8fafc);border:1px solid var(--border,#e2e8f0);border-radius:8px;padding:16px;max-height:550px;overflow:auto;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:0.85rem;color:var(--text-muted,#64748b)">Image Preview</span>
+        <a href="${resolvedViewUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-primary" style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;padding:4px 10px;border-radius:4px;text-decoration:none">
+          ↗ Open Full Image in New Tab
+        </a>
+      </div>
+      <img src="${resolvedViewUrl}" alt="${fileName}" style="max-height:480px;max-width:100%;object-fit:contain;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,0.08)">
     </div>`;
   } else if (isPdf) {
     previewHtml = `<div style="margin-bottom:16px">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-        <a href="${resolvedViewUrl}" target="_blank" class="btn btn-xs btn-outline-primary" style="display:inline-flex;align-items:center;gap:4px">
-          ↗ Open in New Window
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:0.85rem;color:var(--text-muted,#64748b)">PDF Viewer</span>
+        <a href="${resolvedViewUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-primary" style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;padding:4px 10px;border-radius:4px;text-decoration:none">
+          ↗ Open in New Tab
         </a>
       </div>
-      <iframe src="${resolvedViewUrl}" style="width:100%;height:500px;border:1px solid var(--border);border-radius:8px;background:#fff"></iframe>
+      <div style="width:100%;height:540px;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid var(--border,#e2e8f0)">
+        <iframe src="${resolvedViewUrl}" style="width:100%;height:100%;border:none;background:#ffffff"></iframe>
+      </div>
+    </div>`;
+  } else if (isDocx) {
+    const previewContainerId = 'docxPreviewContainer_' + Date.now();
+    const loadingContainerId = 'docxPreviewLoading_' + Date.now();
+
+    previewHtml = `<div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:0.85rem;color:var(--text-muted,#64748b)">Word Document (.${ext.toUpperCase()})</span>
+        <a href="${resolvedViewUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-primary" style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;padding:4px 10px;border-radius:4px;text-decoration:none">
+          ↗ Open in New Tab
+        </a>
+      </div>
+      <div id="${loadingContainerId}" style="text-align:center;padding:48px 20px;background:var(--surface-1,#f8fafc);border-radius:8px;border:1px solid var(--border,#e2e8f0);margin-bottom:16px">
+        <div style="margin:0 auto 16px;width:38px;height:38px;border:3px solid var(--border,#cbd5e1);border-top-color:var(--accent,#0f4c81);border-radius:50%;animation:spin 1s linear infinite"></div>
+        <div style="font-weight:600;font-size:1.05rem;color:var(--text-primary,#1e293b)">Loading document preview...</div>
+        <div style="font-size:0.85rem;color:var(--text-muted,#64748b);margin-top:4px">Rendering document contents and formatting</div>
+      </div>
+      <div id="${previewContainerId}" style="display:none;background:#ffffff;border:1px solid var(--border,#e2e8f0);border-radius:8px;padding:24px 32px;max-height:560px;overflow-y:auto;box-shadow:inset 0 1px 3px rgba(0,0,0,0.05);margin-bottom:16px;color:#1e293b"></div>
+    </div>`;
+
+    postRenderCallback = () => {
+      renderDocxContent(resolvedViewUrl, previewContainerId, loadingContainerId);
+    };
+  } else if (isText) {
+    previewHtml = `<div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:0.85rem;color:var(--text-muted,#64748b)">Text / Data Preview</span>
+        <a href="${resolvedViewUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-primary" style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;padding:4px 10px;border-radius:4px;text-decoration:none">
+          ↗ Open in New Tab
+        </a>
+      </div>
+      <div style="width:100%;height:480px;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid var(--border,#e2e8f0)">
+        <iframe src="${resolvedViewUrl}" style="width:100%;height:100%;border:none;background:#ffffff"></iframe>
+      </div>
     </div>`;
   } else {
-    previewHtml = `<div style="display:flex;align-items:center;gap:16px;padding:24px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;margin-bottom:16px">
-      <div style="font-size:3rem">📄</div>
-      <div>
-        <div style="font-weight:700;font-size:1.05rem;color:var(--text-primary);margin-bottom:4px">${fileName || 'Document File'}</div>
-        <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px">This document type (.${ext.toUpperCase()}) cannot be embedded directly in the browser. Click below to download and inspect it.</div>
-        <a href="${downloadUrl || resolvedViewUrl}" class="btn btn-primary btn-sm" download="${fileName}">
-          💾 Download ${fileName}
-        </a>
-      </div>
+    // Unsupported preview - show clear notification without triggering download
+    previewHtml = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;background:var(--surface-2,#f8fafc);border:1px dashed var(--border,#cbd5e1);border-radius:8px;margin-bottom:16px">
+      <div style="font-size:2.8rem;margin-bottom:12px">📁</div>
+      <div style="font-weight:700;font-size:1.1rem;color:var(--text-primary,#1e293b);margin-bottom:6px">${fileName || 'Document File'}</div>
+      <div style="font-size:0.9rem;color:var(--text-muted,#64748b);max-width:400px;line-height:1.5">Preview not available for this file type (.${(ext || 'FILE').toUpperCase()}).</div>
     </div>`;
   }
 
   let metaHtml = '';
   const metaKeys = Object.keys(metadata).filter(k => k !== 'subtitle');
   if (metaKeys.length > 0) {
-    metaHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:10px;font-size:0.82rem;background:var(--surface-1);padding:12px 16px;border-radius:6px;border:1px solid var(--border)">';
-    if (metadata.uploaded_by) metaHtml += `<div><strong style="color:var(--text-muted)">Uploaded By:</strong> ${metadata.uploaded_by}</div>`;
-    if (metadata.uploaded_at) metaHtml += `<div><strong style="color:var(--text-muted)">Upload Date:</strong> ${metadata.uploaded_at}</div>`;
-    if (metadata.file_size) metaHtml += `<div><strong style="color:var(--text-muted)">File Size:</strong> ${metadata.file_size}</div>`;
-    if (metadata.doc_type) metaHtml += `<div><strong style="color:var(--text-muted)">Document Type:</strong> ${metadata.doc_type}</div>`;
+    metaHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:10px;font-size:0.82rem;background:var(--surface-1,#f8fafc);padding:12px 16px;border-radius:6px;border:1px solid var(--border,#e2e8f0)">';
+    if (metadata.uploaded_by) metaHtml += `<div><strong style="color:var(--text-muted,#64748b)">Uploaded By:</strong> ${metadata.uploaded_by}</div>`;
+    if (metadata.uploaded_at) metaHtml += `<div><strong style="color:var(--text-muted,#64748b)">Upload Date:</strong> ${metadata.uploaded_at}</div>`;
+    if (metadata.file_size) metaHtml += `<div><strong style="color:var(--text-muted,#64748b)">File Size:</strong> ${metadata.file_size}</div>`;
+    if (metadata.doc_type) metaHtml += `<div><strong style="color:var(--text-muted,#64748b)">Document Type:</strong> ${metadata.doc_type}</div>`;
     metaHtml += '</div>';
   }
 
   body.innerHTML = previewHtml + metaHtml;
   modal.classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  if (typeof postRenderCallback === 'function') {
+    postRenderCallback();
+  }
 }
 
 function closeGlobalFileViewModal() {
@@ -1117,29 +1431,34 @@ function initRealtimeSync() {
 }
 
 function handleSystemRealtimeUpdate(payload) {
-  if (!payload || !payload.order_id) return;
+  if (!payload) return;
+
+  // Show live notification toast if message provided
+  if (payload.message || payload.title) {
+    const toastMsg = payload.message || payload.title;
+    const toastType = payload.type || 'info';
+    showToast(toastMsg, toastType, 8000);
+  }
 
   // 1. Order Detail Page Updates
-  const detailContainer = document.querySelector('[data-order-detail-id]');
-  if (detailContainer) {
-    const currentOrderId = parseInt(detailContainer.dataset.orderDetailId, 10);
-    if (currentOrderId === parseInt(payload.order_id, 10)) {
-      const statusBadges = document.querySelectorAll('.order-status-badge, .status-badge-current');
-      statusBadges.forEach(badge => {
-        if (payload.status) {
-          badge.textContent = payload.status;
-          badge.className = 'badge order-status-badge ' + getStatusBadgeClass(payload.status);
-        }
-      });
-
-      if (payload.data && payload.data.status_changed) {
-        neilosAlert(`Order #${payload.order_number} status updated to "${payload.status}" automatically.`, 'Real-Time Workflow Update');
+  if (payload.order_id) {
+    const detailContainer = document.querySelector('[data-order-detail-id]');
+    if (detailContainer) {
+      const currentOrderId = parseInt(detailContainer.dataset.orderDetailId, 10);
+      if (currentOrderId === parseInt(payload.order_id, 10)) {
+        const statusBadges = document.querySelectorAll('.order-status-badge, .status-badge-current');
+        statusBadges.forEach(badge => {
+          if (payload.status) {
+            badge.textContent = payload.status;
+            badge.className = 'badge order-status-badge ' + getStatusBadgeClass(payload.status);
+          }
+        });
       }
     }
   }
 
   // 2. Dashboard Page Updates
-  const dashboardMarker = document.querySelector('.metric-card, .dashboard-grid, #revenueComparisonChart');
+  const dashboardMarker = document.querySelector('.metric-card, .dashboard-grid, .dashboard-kpi-grid, #revenueComparisonChart');
   if (dashboardMarker) {
     refreshDashboardMetricsRealtime();
   }
@@ -1164,9 +1483,9 @@ function refreshDashboardMetricsRealtime() {
         const nrcEl = document.getElementById('dashNrcRevenue');
         const mrcEl = document.getElementById('dashMrcRevenue');
         const totEl = document.getElementById('dashTotalRevenue');
-        if (nrcEl) nrcEl.textContent = 'TZS ' + formatMoneyNumber(m.total_nrc);
-        if (mrcEl) mrcEl.textContent = 'TZS ' + formatMoneyNumber(m.total_mrc);
-        if (totEl) totEl.textContent = 'TZS ' + formatMoneyNumber(m.total_revenue);
+        if (nrcEl) nrcEl.textContent = '$' + formatMoneyNumber(m.total_nrc);
+        if (mrcEl) mrcEl.textContent = '$' + formatMoneyNumber(m.total_mrc);
+        if (totEl) totEl.textContent = '$' + formatMoneyNumber(m.total_revenue);
 
         Object.keys(m.pipeline || {}).forEach(k => {
           const el = document.getElementById('pipeline_cnt_' + k);

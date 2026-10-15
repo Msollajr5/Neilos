@@ -139,7 +139,7 @@
         <input type="hidden" name="kyc_id" value="<?= $app['id'] ?>">
         <div class="form-group">
           <label>Rejection Reason <span class="required">*</span></label>
-          <textarea name="review_notes" class="form-control" rows="3" required placeholder="Reason for rejection..."></textarea>
+          <textarea name="rejection_reason" class="form-control" rows="3" required placeholder="Reason for rejection..."></textarea>
         </div>
         <button type="submit" class="btn btn-danger" style="margin-top:10px"><?= svgIcon('x') ?> Reject</button>
       </form>

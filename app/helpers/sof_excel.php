@@ -5,9 +5,28 @@
  */
 
 function generateSOFExcel(array $order, ?array $partnerKyc = null): string {
-    $templatePath = dirname(__DIR__, 2) . '/Neilos  SOF.xlsx';
+    // Resolve authoritative partner KYC if not provided
+    if ($partnerKyc === null) {
+        $partnerKyc = getAuthoritativePartnerKyc(getDB(), (int)$order['partner_id']);
+    }
+
+    $isEnterprise = (
+        ($order['partner_category'] ?? '') === 'Enterprise Client' ||
+        ($order['partner_type'] ?? '') === 'Enterprise' ||
+        ($order['partner_type'] ?? '') === 'Government' ||
+        (isset($partnerKyc['raw']['partner_category']) && $partnerKyc['raw']['partner_category'] === 'Enterprise Client') ||
+        (isset($partnerKyc['raw']['partner_type']) && in_array($partnerKyc['raw']['partner_type'], ['Enterprise', 'Government']))
+    );
+
+    $enterpriseTemplate = dirname(__DIR__, 2) . '/SOF -Template  for Enterprise Clients.xlsx';
+    $standardTemplate   = dirname(__DIR__, 2) . '/Neilos  SOF.xlsx';
+
+    $templatePath = ($isEnterprise && file_exists($enterpriseTemplate)) ? $enterpriseTemplate : $standardTemplate;
     if (!file_exists($templatePath)) {
-        throw new RuntimeException("Master template 'Neilos SOF.xlsx' not found.");
+        $templatePath = file_exists($enterpriseTemplate) ? $enterpriseTemplate : (file_exists($standardTemplate) ? $standardTemplate : '');
+        if (!$templatePath) {
+            throw new RuntimeException("Master SOF template not found.");
+        }
     }
 
     $uploadDir = dirname(__DIR__, 2) . '/public/uploads/sof';
@@ -21,11 +40,6 @@ function generateSOFExcel(array $order, ?array $partnerKyc = null): string {
     // 1. Create a copy of the master template
     if (!copy($templatePath, $targetPath)) {
         throw new RuntimeException("Failed to copy master SOF template.");
-    }
-
-    // Resolve authoritative partner KYC if not provided
-    if ($partnerKyc === null) {
-        $partnerKyc = getAuthoritativePartnerKyc(getDB(), (int)$order['partner_id']);
     }
 
     // Commercial calculation source of truth
@@ -73,10 +87,22 @@ function generateSOFExcel(array $order, ?array $partnerKyc = null): string {
 
                 // Perform string replacements in existing sharedStrings array
                 $companyName = $partnerKyc['company_name'] ?? ($order['partner_name'] ?? '');
-                $replacements = [
-                    'SOF Number'          => 'SOF Number: ' . $order['order_number'],
-                    'Company  Name (KYC)' => 'Company Name: ' . $companyName,
-                ];
+                $exchangeRate = !empty($order['usd_tzs_rate']) && (float)$order['usd_tzs_rate'] > 0 ? (float)$order['usd_tzs_rate'] : (defined('USD_TZS_RATE') ? (float)USD_TZS_RATE : 2700);
+                $customerName = $order['customer_name'] ?? '';
+                if ($isEnterprise) {
+                    $sofNumber = !empty($order['sof_number']) ? $order['sof_number'] : ('Sav\\SOF\\' . str_pad((string)$order['id'], 4, '0', STR_PAD_LEFT));
+                    $replacements = [
+                        'SMARTCODES LTD' => strtoupper($customerName ?: $companyName),
+                        'Sav\\SOF\\0015' => $sofNumber,
+                    ];
+                } else {
+                    $replacements = [
+                        'SOF Number'                 => 'SOF Number: ' . $order['order_number'],
+                        'Customer Name'              => 'Customer Name: ' . $customerName,
+                        'Company  Name (KYC)'        => 'Company Name: ' . $companyName,
+                        "NEILOS NETWORK Feasibility" => 'Tool Feasibility',
+                    ];
+                }
 
                 foreach ($sharedXml->si as $si) {
                     if (isset($si->t)) {

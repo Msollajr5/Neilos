@@ -83,24 +83,37 @@
   </div>
 
   <div class="card">
-    <div class="card-header"><div class="card-title">Change Password</div></div>
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+      <div class="card-title">Change Password</div>
+      <?php
+      $pwdChanged = $profile['password_changed_at'] ?? $profile['created_at'] ?? null;
+      $pwdAgeDays = $pwdChanged ? (int)floor((time() - strtotime($pwdChanged)) / 86400) : 0;
+      $pwdRemainingDays = max(0, (defined('PASSWORD_EXPIRY_DAYS') ? PASSWORD_EXPIRY_DAYS : 90) - $pwdAgeDays);
+      ?>
+      <span class="badge badge-<?= $pwdRemainingDays <= 14 ? 'warning' : 'info' ?>" style="font-size:0.8rem">
+        🛡️ 90-Day Policy: <?= $pwdRemainingDays ?> days remaining
+      </span>
+    </div>
     <div class="card-body">
+      <p class="text-muted font-sm" style="margin-bottom:18px">
+        Enterprise policy requires updating your password every 90 days. Passwords must be at least 8 characters and include uppercase, lowercase, numbers, and special symbols.
+      </p>
       <form method="POST">
         <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
         <input type="hidden" name="profile_action" value="change_password">
         <div class="form-grid">
           <div class="form-group">
-            <label>Current Password</label>
-            <input type="password" name="current_password" class="form-control" required>
+            <label>Current Password <span class="required">*</span></label>
+            <input type="password" name="current_password" class="form-control" required placeholder="Enter current password">
           </div>
           <div class="form-group">
-            <label>New Password</label>
-            <input type="password" name="new_password" class="form-control" required minlength="8">
-            <div class="form-hint">Minimum 8 characters</div>
+            <label>New Password <span class="required">*</span></label>
+            <input type="password" name="new_password" class="form-control" required minlength="8" placeholder="Min 8 chars, uppercase, number, symbol">
+            <div class="form-hint">Must contain upper, lower, digit, and symbol</div>
           </div>
           <div class="form-group">
-            <label>Confirm New Password</label>
-            <input type="password" name="confirm_password" class="form-control" required minlength="8">
+            <label>Confirm New Password <span class="required">*</span></label>
+            <input type="password" name="confirm_password" class="form-control" required minlength="8" placeholder="Re-enter new password">
           </div>
         </div>
         <div class="divider"></div>

@@ -66,6 +66,53 @@ if ($endDate) {
 $filterQueryStr = !empty($filterQueryParams) ? '&' . http_build_query($filterQueryParams) : '';
 
 // ============================================================
+// Handle USD Exchange Rate Update (Admin, Management, KAM only)
+// ============================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['action'] ?? '') === 'update_usd_rate') {
+    if (!canManageUsdExchangeRate()) {
+        setFlash('danger', 'Access denied. Only Admin, Management, and KAM roles are authorized to update the USD exchange rate.');
+        header('Location: ' . APP_URL . '/?page=dashboard' . (!empty($filterQueryStr) ? '?' . ltrim($filterQueryStr, '&') : ''));
+        exit;
+    }
+
+    verifyCsrf();
+
+    $rateInput = trim($_POST['usd_exchange_rate'] ?? '');
+    $cleanRate = str_replace(',', '', $rateInput);
+
+    if (!is_numeric($cleanRate) || (float)$cleanRate <= 0) {
+        setFlash('danger', 'Invalid USD exchange rate. Please enter a valid positive numeric value (e.g. 2650.00).');
+        header('Location: ' . APP_URL . '/?page=dashboard' . (!empty($filterQueryStr) ? '?' . ltrim($filterQueryStr, '&') : ''));
+        exit;
+    }
+
+    $rateVal = round((float)$cleanRate, 4);
+    if ($rateVal > 1000000) {
+        setFlash('danger', 'USD exchange rate exceeds the maximum allowable limit.');
+        header('Location: ' . APP_URL . '/?page=dashboard' . (!empty($filterQueryStr) ? '?' . ltrim($filterQueryStr, '&') : ''));
+        exit;
+    }
+
+    $stmt = $db->prepare("
+        INSERT INTO system_settings (setting_key, setting_value, updated_by, updated_at)
+        VALUES ('usd_exchange_rate', ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+          setting_value = VALUES(setting_value),
+          updated_by = VALUES(updated_by),
+          updated_at = NOW()
+    ");
+    $stmt->execute([number_format($rateVal, 2, '.', ''), $user['id']]);
+
+    auditLog("Updated global USD exchange rate to 1 USD = TZS " . money($rateVal), 'system_settings', 1);
+    setFlash('success', "USD Exchange Rate updated successfully: 1 USD = TZS " . money($rateVal));
+    header('Location: ' . APP_URL . '/?page=dashboard' . (!empty($filterQueryStr) ? '?' . ltrim($filterQueryStr, '&') : ''));
+    exit;
+}
+
+$usdRateData   = getGlobalUsdExchangeRate($db);
+$globalUsdRate = $usdRateData['has_rate'] ? $usdRateData['rate'] : 0.0;
+
+// ============================================================
 // 2. Global Filtered Dataset Calculations
 // ============================================================
 
@@ -118,7 +165,12 @@ $activeCustomers = (int)$stmtCust->fetchColumn();
 
 // Registered Partners represented in filtered period (or total active if all-time)
 if ($dateWhere === '') {
-    $stmtPartners = $db->query("SELECT COUNT(*) FROM partners WHERE status = 'Active' AND kyc_type = 'Partner'");
+    if (isKamUser()) {
+        $stmtPartners = $db->prepare("SELECT COUNT(*) FROM partners WHERE status = 'Active' AND (kyc_type = 'Partner' OR partner_type IN ('ISP','Reseller')) AND (kam_id = ? OR assigned_kam_name = ?)");
+        $stmtPartners->execute([$user['id'], $user['full_name']]);
+    } else {
+        $stmtPartners = $db->query("SELECT COUNT(*) FROM partners WHERE status = 'Active' AND (kyc_type = 'Partner' OR partner_type IN ('ISP','Reseller'))");
+    }
     $totalPartners = $stmtPartners ? (int)$stmtPartners->fetchColumn() : 0;
 } else {
     $stmtPartners = $db->prepare("SELECT COUNT(DISTINCT o.partner_id) FROM orders o WHERE {$pw['condition']} $dateWhere");
@@ -149,10 +201,25 @@ $slaAvgActiveDuration    = $slaAnalytics['avg_active_formatted'];
 $slaStages               = $slaAnalytics['stages'];
 $slaBottlenecks          = $slaAnalytics['bottlenecks'];
 
-
+// 2.5 Pending KYC Applications for Finance / Admin Review
+$pendingKycList = [];
+$pendingKycCount = 0;
+if (isFinance() || isAdmin() || isManagement() || hasPermission('kyc.approve')) {
+    try {
+        $pkycStmt = $db->query("
+            SELECT pka.id, pka.registered_name, pka.kyc_type, pka.submitted_at, pka.created_at, p.name as partner_name
+            FROM partner_kyc_applications pka
+            LEFT JOIN partners p ON pka.partner_id = p.id
+            WHERE pka.status IN ('Submitted for Approval', 'Pending Approval', 'Submitted')
+            ORDER BY COALESCE(pka.submitted_at, pka.created_at) DESC
+        ");
+        $pendingKycList = $pkycStmt ? $pkycStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        $pendingKycCount = count($pendingKycList);
+    } catch (Throwable $t) {}
+}
 
 // ============================================================
-// 3. Dedicated Revenue Analysis (Filtered Dataset)
+// 3. New gross add revenue (Filtered Dataset)
 // Qualifying: Closed + billing_start_date set & reached within filtered orders
 // ============================================================
 $revenueStmt = $db->prepare("
@@ -219,13 +286,48 @@ uasort($serviceTypeRevenue, function($a, $b) {
 $totalCombinedRevenue = round($totalNrcRevenue + $totalMrcRevenue, 2);
 $billingActiveCount   = count($billingActiveOrders);
 
+// Global USD Conversions (USD Revenue = TZS Revenue ÷ Global USD Exchange Rate)
+$totalNrcRevenueUsd      = ($globalUsdRate > 0) ? round($totalNrcRevenue / $globalUsdRate, 2) : 0.0;
+$totalMrcRevenueUsd      = ($globalUsdRate > 0) ? round($totalMrcRevenue / $globalUsdRate, 2) : 0.0;
+$totalCombinedRevenueUsd = ($globalUsdRate > 0) ? round($totalCombinedRevenue / $globalUsdRate, 2) : 0.0;
+
+foreach ($serviceTypeRevenue as $stKey => &$stItem) {
+    $stItem['nrc_revenue_usd']   = ($globalUsdRate > 0) ? round($stItem['nrc_revenue'] / $globalUsdRate, 2) : 0.0;
+    $stItem['mrc_revenue_usd']   = ($globalUsdRate > 0) ? round($stItem['mrc_revenue'] / $globalUsdRate, 2) : 0.0;
+    $stItem['total_revenue_usd'] = ($globalUsdRate > 0) ? round($stItem['total_revenue'] / $globalUsdRate, 2) : 0.0;
+}
+unset($stItem);
+
+// ============================================================
+// 3.1 Projected Total Revenue (Recurring from Closed + Billed + Active Orders)
+// ============================================================
+$projectedRevenueData = getProjectedTotalRevenue($db, $pw, $dateWhere, $dateParams);
+$projectedTotalRevenueUsd = ($globalUsdRate > 0) ? round($projectedRevenueData['projected_total_revenue'] / $globalUsdRate, 2) : 0.0;
+$currentMonthlyMrcUsd     = ($globalUsdRate > 0) ? round($projectedRevenueData['current_monthly_mrc'] / $globalUsdRate, 2) : 0.0;
+
+foreach ($projectedRevenueData['eligible_orders'] as &$pOrd) {
+    $pOrd['monthly_mrc_usd']       = ($globalUsdRate > 0) ? round($pOrd['monthly_mrc'] / $globalUsdRate, 2) : 0.0;
+    $pOrd['projected_revenue_usd'] = ($globalUsdRate > 0) ? round($pOrd['projected_revenue'] / $globalUsdRate, 2) : 0.0;
+}
+unset($pOrd);
+
 // ============================================================
 // 4. Service Type Distribution (Filtered Dataset)
 // ============================================================
 $serviceTypeDist = [];
-$allOrdersStmt = $db->prepare("SELECT id, service_type, fttx_package, aggregate_capacity, bandwidth, remote_hands_nrc_usd, base_nrc_usd, status FROM orders o WHERE {$pw['condition']} $dateWhere");
-$allOrdersStmt->execute(array_merge($pw['params'], $dateParams));
-$allOrders = $allOrdersStmt->fetchAll(PDO::FETCH_ASSOC);
+try {
+    $allOrdersStmt = $db->prepare("SELECT id, service_type, fttx_package, aggregate_capacity, bandwidth, remote_hands_nrc_usd, base_nrc_usd, status FROM orders o WHERE {$pw['condition']} $dateWhere");
+    $allOrdersStmt->execute(array_merge($pw['params'], $dateParams));
+    $allOrders = $allOrdersStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    try {
+        $allOrdersStmt = $db->prepare("SELECT id, service_type, status FROM orders o WHERE {$pw['condition']} $dateWhere");
+        $allOrdersStmt->execute(array_merge($pw['params'], $dateParams));
+        $allOrders = $allOrdersStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $t) {
+        $allOrders = [];
+    }
+}
 
 foreach ($allOrders as $ord) {
     $stVal = trim($ord['service_type'] ?? '');
@@ -388,14 +490,14 @@ try {
     $activityTimeline = $stmtActFeed->fetchAll();
 } catch (Exception $e) {}
 
-// Recent orders in filtered period (last 8)
+// Recent orders in filtered period (latest 4 for executive summary)
 $recentStmt = $db->prepare("
     SELECT o.*, p.name as partner_name 
     FROM orders o 
     JOIN partners p ON o.partner_id = p.id 
     WHERE {$pw['condition']} $dateWhere 
     ORDER BY o.created_at DESC 
-    LIMIT 8
+    LIMIT 4
 ");
 $recentStmt->execute(array_merge($pw['params'], $dateParams));
 $recentOrders = $recentStmt->fetchAll();

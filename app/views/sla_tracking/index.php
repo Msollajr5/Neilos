@@ -5,7 +5,7 @@
     <div class="page-subtitle"><?= $total ?> order(s) evaluated &middot; Lifecycle stage duration and compliance monitoring</div>
   </div>
   <div class="page-header-actions">
-    <a href="?page=sla_tracking&action=export&<?= http_build_query(array_merge($_GET, ['action'=>null])) ?>" class="btn btn-secondary">
+    <a href="?<?= http_build_query(array_merge($_GET, ['page' => 'sla_tracking', 'action' => 'export'])) ?>" class="btn btn-secondary">
       <?= svgIcon('download') ?> Export CSV
     </a>
   </div>
@@ -62,44 +62,77 @@
   </div>
 </div>
 
-<!-- Date Filter & Search Bar -->
-<div class="card mb-24" style="background:var(--surface-1);border:1px solid var(--border)">
-  <div class="card-body" style="padding:14px 18px">
-    <form method="GET" action="<?= APP_URL ?>/" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+<!-- Filter Card (Exact Contractors Appearance) -->
+<div class="card mb-20" style="margin-bottom:20px">
+  <div class="card-body" style="padding:16px">
+    <form method="GET" action="<?= APP_URL ?>/" style="display:flex;flex-direction:column;gap:12px">
       <input type="hidden" name="page" value="sla_tracking">
-      
-      <!-- Preset Buttons -->
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <span style="font-size:0.82rem;font-weight:600;color:var(--text-secondary);margin-right:4px">Period:</span>
-        <a href="<?= APP_URL ?>/?page=sla_tracking&preset=all" class="btn btn-xs <?= ($filterPreset === 'all' || empty($filterPreset)) ? 'btn-primary' : 'btn-outline-secondary' ?>">All Time</a>
-        <a href="<?= APP_URL ?>/?page=sla_tracking&preset=today" class="btn btn-xs <?= ($filterPreset === 'today') ? 'btn-primary' : 'btn-outline-secondary' ?>">Today</a>
-        <a href="<?= APP_URL ?>/?page=sla_tracking&preset=this_month" class="btn btn-xs <?= ($filterPreset === 'this_month') ? 'btn-primary' : 'btn-outline-secondary' ?>">This Month</a>
-        <a href="<?= APP_URL ?>/?page=sla_tracking&preset=last_month" class="btn btn-xs <?= ($filterPreset === 'last_month') ? 'btn-primary' : 'btn-outline-secondary' ?>">Last Month</a>
-        <a href="<?= APP_URL ?>/?page=sla_tracking&preset=this_year" class="btn btn-xs <?= ($filterPreset === 'this_year') ? 'btn-primary' : 'btn-outline-secondary' ?>">This Year</a>
+
+      <!-- Row 1: Period Presets + Custom Date Range -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:0.82rem;font-weight:600;color:var(--text-secondary);margin-right:4px">Period:</span>
+          <?php
+            $slaPresets = [
+              'all'        => 'All Time',
+              'today'      => 'Today',
+              'this_month' => 'This Month',
+              'last_month' => 'Last Month',
+              'this_year'  => 'This Year',
+            ];
+            $curSlaPreset = $filterPreset ?: 'all';
+          ?>
+          <?php foreach ($slaPresets as $pKey => $pLabel): ?>
+            <?php
+              $pParams = $_GET;
+              $pParams['page'] = 'sla_tracking';
+              $pParams['preset'] = $pKey;
+              unset($pParams['start_date'], $pParams['end_date'], $pParams['p']);
+            ?>
+            <a href="?<?= http_build_query($pParams) ?>"
+               class="btn btn-sm <?= ($curSlaPreset === $pKey && !$filterStart && !$filterEnd) ? 'btn-primary' : 'btn-secondary' ?>"
+               style="font-size:0.78rem;padding:4px 10px">
+              <?= $pLabel ?>
+            </a>
+          <?php endforeach; ?>
+        </div>
+
+        <!-- Custom Date Range -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Custom:</span>
+          <input type="date" name="start_date" class="form-control" style="font-size:0.8rem;padding:4px 8px;width:auto;height:32px" value="<?= e($filterStart) ?>" placeholder="From">
+          <span style="color:var(--text-muted)">to</span>
+          <input type="date" name="end_date" class="form-control" style="font-size:0.8rem;padding:4px 8px;width:auto;height:32px" value="<?= e($filterEnd) ?>" placeholder="To">
+        </div>
       </div>
 
-      <!-- Search, Status & Custom Date Inputs -->
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:4px">
-          <label style="font-size:0.8rem;color:var(--text-secondary);margin:0">From:</label>
-          <input type="date" name="start_date" class="form-control" style="padding:4px 8px;font-size:0.82rem;height:30px" value="<?= e($filterStart) ?>">
+      <!-- Row 2: Search & Status Filters -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <!-- Search Box -->
+        <div style="flex:2;min-width:240px">
+          <div class="search-box" style="width:100%">
+            <?= svgIcon('search') ?>
+            <input type="text" name="q" placeholder="Search order #, customer..." value="<?= e($filterSearch) ?>">
+          </div>
         </div>
-        <div style="display:flex;align-items:center;gap:4px">
-          <label style="font-size:0.8rem;color:var(--text-secondary);margin:0">To:</label>
-          <input type="date" name="end_date" class="form-control" style="padding:4px 8px;font-size:0.82rem;height:30px" value="<?= e($filterEnd) ?>">
+
+        <!-- Status Filter -->
+        <div style="flex:1;min-width:140px">
+          <select name="status" class="form-control" style="font-size:0.85rem">
+            <option value="">All Statuses</option>
+            <?php foreach ($allStatuses as $s): ?>
+            <option value="<?= e($s) ?>" <?= $filterStatus === $s ? 'selected' : '' ?>><?= e($s) ?></option>
+            <?php endforeach; ?>
+          </select>
         </div>
-        <select name="status" class="form-control" style="padding:4px 8px;font-size:0.82rem;height:30px;width:auto">
-          <option value="">All Statuses</option>
-          <?php foreach ($allStatuses as $s): ?>
-          <option value="<?= e($s) ?>" <?= $filterStatus === $s ? 'selected' : '' ?>><?= e($s) ?></option>
-          <?php endforeach; ?>
-        </select>
-        <div style="min-width:160px">
-          <input type="text" name="q" class="form-control" style="padding:4px 8px;font-size:0.82rem;height:30px" placeholder="Search order/customer..." value="<?= e($filterSearch) ?>">
-        </div>
-        <button class="btn btn-secondary btn-xs" type="submit" style="height:30px;padding:0 12px"><?= svgIcon('filter') ?> Filter</button>
-        <?php if ($filterStart || $filterEnd || $filterPreset !== '' || $filterSearch || $filterStatus): ?>
-        <a href="<?= APP_URL ?>/?page=sla_tracking" class="btn btn-outline btn-xs" style="height:30px;padding:0 8px" title="Reset filter">✕ Reset</a>
+
+        <button type="submit" class="btn btn-primary btn-sm" style="height:38px;padding:0 16px">
+          <?= svgIcon('filter') ?> Filter
+        </button>
+        <?php if ($filterStart || $filterEnd || ($filterPreset !== '' && $filterPreset !== 'all') || $filterSearch || $filterStatus): ?>
+        <a href="<?= APP_URL ?>/?page=sla_tracking" class="btn btn-secondary btn-sm" style="height:38px;padding:0 14px;display:inline-flex;align-items:center">
+          Clear
+        </a>
         <?php endif; ?>
       </div>
     </form>
@@ -117,7 +150,7 @@
           <th style="min-width:130px;text-align:left;padding:14px 16px;white-space:nowrap;font-weight:700">STATUS</th>
           <th style="min-width:120px;text-align:center;padding:14px 16px;white-space:nowrap;font-weight:700">ORDER SLA</th>
           <th style="min-width:160px;text-align:right;padding:14px 16px;white-space:nowrap;font-weight:700">FEASIBILITY (24h)</th>
-          <th style="min-width:160px;text-align:right;padding:14px 16px;white-space:nowrap;font-weight:700">COMMERCIAL (48h)</th>
+          <th style="min-width:160px;text-align:right;padding:14px 16px;white-space:nowrap;font-weight:700">COMMERCIAL (24h)</th>
           <th style="min-width:160px;text-align:right;padding:14px 16px;white-space:nowrap;font-weight:700">SOF (72h)</th>
           <th style="min-width:160px;text-align:right;padding:14px 16px;white-space:nowrap;font-weight:700">INSTALLATION (120h)</th>
           <th style="min-width:180px;text-align:right;padding:14px 16px;white-space:nowrap;font-weight:700;color:var(--primary)">TOTAL DURATION</th>

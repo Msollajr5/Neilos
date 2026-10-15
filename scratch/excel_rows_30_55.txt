@@ -1,0 +1,25 @@
+Row 30: Col2(B): 'TERMS AND CONDITIONS'
+Row 31: Col2(B): '1. All Invoices shall be raise in TZS at the rate specified above'
+Row 32: Col2(B): '2. These Terms and Conditions constitute the agreement for services between Savanna Business Enterprise Tanzania and the Client.'
+Row 33: Col2(B): "3. This agreement shall, subject to the applicable termination provisions in the Master Services Agreement, continue for the initial fixed term indicated in this Service Order Form and shall commence from the Service activation date at the Customer's premises."
+Row 34: Col2(B): '4. At the end of the initial term, the Service will automatically renew for successive renewal terms equal in length to the initial term unless and until '
+Row 35: Col2(B): "terminated by either Party in any given renewal term, with 30 days' termination notice. Such termination by the Customer shall be in writing and delivered to the Account Manager."
+Row 36: Col2(B): '5. Billing for the Services shall commence on the date that the respective Service has been activated by Savanna Business Enterprise.'
+Row 37: Col2(B): '6. Savanna Business Enterprise will invoice the Customer monthly for payment in full within 30 days of the date of the invoice. Savanna Business Enterprise reserves the right to suspend the Service if the Customer defaults on payment and may, at its discretion, suspend services where charges have not been paid by the due date.'
+Row 38: Col2(B): '7. If the customer terminates the service before the end of the initial term, Customer shall pay the Early Termination Fee and refund any discounts received.'
+Row 39: Col2(B): 'Payment shall be made within  (15) days of termination.'
+Row 40: Col2(B): '8. By signing this Service Order Form, the Customer confirms the accuracy of the information provided, agrees to notify Savanna Business Enterprise of any changes, and acknowledges that this Form,.'
+Row 41: Col2(B): '9. The construction, validity and performance of these Terms and Conditions shall be governed by the Laws of the United Republic of Tanzania.'
+Row 42: 
+Row 43: Col2(B): 'DECLARATION '
+Row 44: Col2(B): 'By signing below, the authorized representatives of both parties agree to the terms and conditions outlined in this Service Order Form and the referenced Master Service Agreement. Savanna  is authorized to proceed with the installation and provisioning of the service described herein.'
+Row 45: Col3(C): 'SMARTCODES LTD' | Col8(H): 'Savanna Business Enterprise'
+Row 46: Col2(B): 'Name' | Col8(H): 'Name'
+Row 47: Col2(B): 'Title' | Col8(H): 'Title'
+Row 48: Col2(B): 'Signature & Date' | Col8(H): 'Signature & Date'
+Row 49: Col2(B): 'Stamp' | Col8(H): 'Stamp'
+Row 50: 
+Row 51: 
+Row 52: 
+Row 53: 
+Row 54: 

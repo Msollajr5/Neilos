@@ -3,6 +3,15 @@
 $flash = getFlash();
 $user  = currentUser();
 $currentPage = $_GET['page'] ?? 'dashboard';
+$currentType = trim($_GET['type'] ?? $_GET['category'] ?? '');
+$activeSubKey = '';
+if ($currentPage === 'partners') {
+    if ($currentType === 'enterprise') {
+        $activeSubKey = 'partners_enterprise';
+    } elseif ($currentType === 'partner') {
+        $activeSubKey = 'partners_all';
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
@@ -16,9 +25,11 @@ $currentPage = $_GET['page'] ?? 'dashboard';
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Sora:wght@600;700;800&display=swap">
   <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/portal.css?v=<?= time() ?>">
   <link rel="icon" type="image/png" href="<?= APP_URL ?>/favicon.ico?v=2">
-  <link rel="shortcut icon" href="<?= APP_URL ?>/favicon.ico?v=2">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <script>var APP_URL = '<?= APP_URL ?>';</script>
+  <script>
+    var APP_URL = '<?= APP_URL ?>';
+    window.SERVER_PRICING_PACKAGES = <?= json_encode(getActivePricingPackages()) ?>;
+  </script>
 </head>
 <body>
 <div class="portal-wrapper">
@@ -44,7 +55,9 @@ $currentPage = $_GET['page'] ?? 'dashboard';
   })();
   </script>
   <div class="sidebar-logo">
-    <img src="<?= APP_URL ?>/assets/img/logo.png?v=2" alt="Neilos" class="sidebar-logo-img">
+    <a href="<?= APP_URL ?>/?page=dashboard" class="sidebar-logo-link" title="Neilos Network">
+      <img src="<?= APP_URL ?>/assets/img/logo.png?v=4" alt="Neilos Network" class="sidebar-logo-img">
+    </a>
   </div>
 
   <nav class="sidebar-nav">
@@ -63,6 +76,82 @@ $currentPage = $_GET['page'] ?? 'dashboard';
             ],
         ],
         [
+            'label' => 'Partners & Commercial',
+            'items' => [
+                [
+                    'key'        => 'partners',
+                    'title'      => 'Partners & Clients',
+                    'url'        => APP_URL . '/?page=partners',
+                    'icon'       => 'building',
+                    'permission' => 'partners.view',
+                    'badge'      => function() use ($user) {
+                        try {
+                            $db = getDB();
+                            $where = "(kyc_type IS NULL OR kyc_type != 'Contractor') AND (partner_type IS NULL OR partner_type != 'Contractor')";
+                            $params = [];
+                            if (isKamUser()) {
+                                $where .= " AND (kam_id = ? OR assigned_kam_name = ?)";
+                                $params = [(int)$user['id'], $user['full_name']];
+                            }
+                            $cntStmt = $db->prepare("SELECT COUNT(*) FROM partners WHERE {$where}");
+                            $cntStmt->execute($params);
+                            $cnt = (int)$cntStmt->fetchColumn();
+                            return $cnt > 0 ? "<span class='nav-badge' style='background:rgba(15,76,129,0.15);color:var(--primary);border:1px solid var(--primary)'>$cnt</span>" : '';
+                        } catch(Exception $e) { return ''; }
+                    },
+                    'subitems'   => [
+                        [
+                            'key'        => 'partners_all',
+                            'title'      => 'All Partners',
+                            'url'        => APP_URL . '/?page=partners&type=partner',
+                            'badge'      => function() use ($user) {
+                                try {
+                                    $db = getDB();
+                                    $where = "(kyc_type IS NULL OR kyc_type != 'Contractor') AND (partner_type IS NULL OR partner_type != 'Contractor') AND (partner_category = 'Partner' OR (partner_category IS NULL AND (partner_type IS NULL OR partner_type != 'Enterprise')))";
+                                    $params = [];
+                                    if (isKamUser()) {
+                                        $where .= " AND (kam_id = ? OR assigned_kam_name = ?)";
+                                        $params = [(int)$user['id'], $user['full_name']];
+                                    }
+                                    $cntStmt = $db->prepare("SELECT COUNT(*) FROM partners WHERE {$where}");
+                                    $cntStmt->execute($params);
+                                    $cnt = (int)$cntStmt->fetchColumn();
+                                    return $cnt > 0 ? "<span class='nav-sub-badge'>$cnt</span>" : '';
+                                } catch(Exception $e) { return ''; }
+                            },
+                        ],
+                        [
+                            'key'        => 'partners_enterprise',
+                            'title'      => 'Enterprise Clients',
+                            'url'        => APP_URL . '/?page=partners&type=enterprise',
+                            'badge'      => function() use ($user) {
+                                try {
+                                    $db = getDB();
+                                    $where = "(kyc_type IS NULL OR kyc_type != 'Contractor') AND (partner_type IS NULL OR partner_type != 'Contractor') AND (partner_category = 'Enterprise Client' OR partner_type = 'Enterprise')";
+                                    $params = [];
+                                    if (isKamUser()) {
+                                        $where .= " AND (kam_id = ? OR assigned_kam_name = ?)";
+                                        $params = [(int)$user['id'], $user['full_name']];
+                                    }
+                                    $cntStmt = $db->prepare("SELECT COUNT(*) FROM partners WHERE {$where}");
+                                    $cntStmt->execute($params);
+                                    $cnt = (int)$cntStmt->fetchColumn();
+                                    return $cnt > 0 ? "<span class='nav-sub-badge'>$cnt</span>" : '';
+                                } catch(Exception $e) { return ''; }
+                            },
+                        ],
+                    ]
+                ],
+                [
+                    'key'        => 'kyc',
+                    'title'      => 'KYC Applications',
+                    'url'        => APP_URL . '/?page=kyc',
+                    'icon'       => 'document',
+                    'permission' => 'kyc.view',
+                ],
+            ],
+        ],
+        [
             'label' => 'Order Lifecycle',
             'items' => [
                 [
@@ -74,7 +163,7 @@ $currentPage = $_GET['page'] ?? 'dashboard';
                 ],
                 [
                     'key'        => 'ftth_bulk',
-                    'title'      => 'FTTH Bulk Upload',
+                    'title'      => 'Bulk Order Upload',
                     'url'        => APP_URL . '/?page=ftth_bulk',
                     'icon'       => 'upload',
                     'permission' => 'orders.bulk',
@@ -85,26 +174,31 @@ $currentPage = $_GET['page'] ?? 'dashboard';
                     'url'        => APP_URL . '/?page=orders',
                     'icon'       => 'list',
                     'permission' => 'orders.view',
-                ],
-            ],
-        ],
-        [
-            'label' => 'Field & Vendor Delivery',
-            'items' => [
-                [
-                    'key'        => 'contractor',
-                    'title'      => isContractorUser() ? 'My Jobs' : 'Contractors',
-                    'url'        => APP_URL . '/?page=contractor',
-                    'icon'       => 'users',
-                    'permission' => 'contractors.view',
                     'badge'      => function() use ($user) {
-                        if (!isContractorUser()) return '';
                         try {
                             $db = getDB();
-                            $cntStmt = $db->prepare("SELECT COUNT(*) FROM contractor_assignments ca WHERE ca.contractor_partner_id = ? AND ca.status = 'Assigned'");
-                            $cntStmt->execute([$user['partner_id'] ?? 0]);
+                            $pw = partnerWhere('o');
+                            $cntStmt = $db->prepare("SELECT COUNT(*) FROM orders o WHERE {$pw['condition']} AND o.status != 'Closed' AND o.status NOT IN ('Not Feasible', 'Cancelled')");
+                            $cntStmt->execute($pw['params']);
                             $cnt = (int)$cntStmt->fetchColumn();
-                            return $cnt > 0 ? "<span class='nav-badge'>$cnt</span>" : '';
+                            return $cnt > 0 ? "<span class='nav-badge' style='background:var(--warning);color:#fff'>$cnt</span>" : '';
+                        } catch(Exception $e) { return ''; }
+                    }
+                ],
+                [
+                    'key'        => 'closed_orders',
+                    'title'      => 'Closed Orders',
+                    'url'        => APP_URL . '/?page=closed_orders',
+                    'icon'       => 'check-circle',
+                    'permission' => 'orders.view',
+                    'badge'      => function() use ($user) {
+                        try {
+                            $db = getDB();
+                            $pw = partnerWhere('o');
+                            $cntStmt = $db->prepare("SELECT COUNT(*) FROM orders o WHERE {$pw['condition']} AND (o.status = 'Closed' OR o.status IN ('Not Feasible', 'Cancelled'))");
+                            $cntStmt->execute($pw['params']);
+                            $cnt = (int)$cntStmt->fetchColumn();
+                            return $cnt > 0 ? "<span class='nav-badge' style='background:rgba(5,150,105,0.15);color:var(--success);border:1px solid var(--success)'>$cnt</span>" : '';
                         } catch(Exception $e) { return ''; }
                     }
                 ],
@@ -113,13 +207,6 @@ $currentPage = $_GET['page'] ?? 'dashboard';
         [
             'label' => 'Compliance & SLAs',
             'items' => [
-                [
-                    'key'        => 'kyc',
-                    'title'      => 'KYC Application',
-                    'url'        => APP_URL . '/?page=kyc',
-                    'icon'       => 'document',
-                    'permission' => 'kyc.view',
-                ],
                 [
                     'key'        => 'sla_tracking',
                     'title'      => 'SLA Tracking',
@@ -137,22 +224,69 @@ $currentPage = $_GET['page'] ?? 'dashboard';
             ],
         ],
         [
-            'label' => 'Administration',
+            'label' => 'Field & Vendor Delivery',
             'items' => [
                 [
-                    'key'        => 'partners',
-                    'title'      => 'Partner Management',
-                    'url'        => APP_URL . '/?page=partners',
-                    'icon'       => 'building',
-                    'permission' => 'partners.view',
+                    'key'        => isContractorUser() ? 'contractor' : 'contractors',
+                    'title'      => isContractorUser() ? 'My Jobs' : 'Contractors',
+                    'url'        => isContractorUser() ? (APP_URL . '/?page=contractor') : (APP_URL . '/?page=contractors'),
+                    'icon'       => isContractorUser() ? 'briefcase' : 'users',
+                    'permission' => 'contractors.view',
+                    'badge'      => function() use ($user) {
+                        if (!isContractorUser()) return '';
+                        try {
+                            $db = getDB();
+                            $cntStmt = $db->prepare("SELECT COUNT(*) FROM contractor_assignments ca WHERE ca.contractor_partner_id = ? AND ca.status = 'Assigned'");
+                            $cntStmt->execute([$user['partner_id'] ?? 0]);
+                            $cnt = (int)$cntStmt->fetchColumn();
+                            return $cnt > 0 ? "<span class='nav-badge'>$cnt</span>" : '';
+                        } catch(Exception $e) { return ''; }
+                    }
                 ],
                 [
-                    'key'        => 'contractors',
-                    'title'      => 'Contractors Management',
-                    'url'        => APP_URL . '/?page=contractors',
-                    'icon'       => 'users',
-                    'permission' => 'contractors.manage',
+                    'key'        => 'surveys',
+                    'title'      => isContractorUser() ? 'Allocated Surveys' : 'Surveys & Field Teams',
+                    'url'        => APP_URL . '/?page=surveys',
+                    'icon'       => 'map',
+                    'permission' => 'surveys.view',
+                    'badge'      => function() use ($user) {
+                        try {
+                            $db = getDB();
+                            ensureSurveysSchema($db);
+                            if (isContractorUser()) {
+                                $pId = (int)($user['partner_id'] ?? 0);
+                                $cnt = (int)$db->query("SELECT COUNT(*) FROM survey_tasks WHERE contractor_partner_id = $pId AND status IN ('Assigned', 'In Progress')")->fetchColumn();
+                            } else {
+                                $cnt = (int)$db->query("SELECT COUNT(*) FROM survey_tasks WHERE status IN ('Assigned', 'In Progress', 'Completed')")->fetchColumn();
+                            }
+                            return $cnt > 0 ? "<span class='nav-badge' style='background:var(--primary);color:#fff'>$cnt</span>" : '';
+                        } catch(Exception $e) { return ''; }
+                    }
                 ],
+                [
+                    'key'        => 'contractor_teams',
+                    'title'      => 'Teams & Technicians',
+                    'url'        => APP_URL . '/?page=contractor&action=teams',
+                    'icon'       => 'users',
+                    'permission' => 'contractors.view',
+                    'badge'      => function() use ($user) {
+                        try {
+                            $db = getDB();
+                            if (isContractorUser()) {
+                                $pId = (int)($user['partner_id'] ?? 0);
+                                $cnt = (int)$db->query("SELECT COUNT(*) FROM contractor_technicians WHERE contractor_partner_id = $pId AND status = 'Pending'")->fetchColumn();
+                            } else {
+                                $cnt = (int)$db->query("SELECT COUNT(*) FROM contractor_technicians WHERE status = 'Pending'")->fetchColumn();
+                            }
+                            return $cnt > 0 ? "<span class='nav-badge' style='background:var(--warning);color:#fff'>$cnt</span>" : '';
+                        } catch(Exception $e) { return ''; }
+                    }
+                ],
+            ],
+        ],
+        [
+            'label' => 'Administration',
+            'items' => [
                 [
                     'key'        => 'users',
                     'title'      => 'User Management',
@@ -185,13 +319,41 @@ $currentPage = $_GET['page'] ?? 'dashboard';
         if (empty($visibleItems)) continue;
     ?>
     <div class="nav-section-label"><?= e($sec['label']) ?></div>
-    <?php foreach ($visibleItems as $item): ?>
-    <div class="nav-item">
-      <a href="<?= $item['url'] ?>" class="nav-link <?= $currentPage === $item['key'] ? 'active' : '' ?>">
+    <?php foreach ($visibleItems as $item): 
+        $hasSub = !empty($item['subitems']);
+        $isSubActive = false;
+        if ($hasSub) {
+            foreach ($item['subitems'] as $sub) {
+                if ($activeSubKey === $sub['key']) {
+                    $isSubActive = true;
+                    break;
+                }
+            }
+        }
+        $isParentActive = ($currentPage === $item['key']);
+    ?>
+    <div class="nav-item <?= $hasSub ? 'has-submenu' : '' ?> <?= ($isParentActive || $isSubActive) ? 'open' : '' ?>">
+      <a href="<?= $item['url'] ?>" class="nav-link <?= ($isParentActive && !$isSubActive) ? 'active' : '' ?>">
         <?= svgIcon($item['icon']) ?>
         <span><?= e($item['title']) ?></span>
         <?php if (!empty($item['badge']) && is_callable($item['badge'])) echo $item['badge'](); ?>
+        <?php if ($hasSub): ?>
+        <span class="submenu-arrow"><?= svgIcon('chevron-down', 12) ?></span>
+        <?php endif; ?>
       </a>
+      <?php if ($hasSub): ?>
+      <div class="nav-submenu">
+        <?php foreach ($item['subitems'] as $sub): 
+            $isThisSubActive = ($activeSubKey === $sub['key']);
+        ?>
+        <a href="<?= $sub['url'] ?>" class="nav-sublink <?= $isThisSubActive ? 'active' : '' ?>">
+          <span class="nav-sublink-bullet"></span>
+          <span><?= e($sub['title']) ?></span>
+          <?php if (!empty($sub['badge']) && is_callable($sub['badge'])) echo $sub['badge'](); ?>
+        </a>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
     </div>
     <?php endforeach; ?>
   <?php endforeach; ?>
@@ -254,6 +416,18 @@ $currentPage = $_GET['page'] ?? 'dashboard';
 
   <!-- Page Content -->
   <div class="page-content">
+    <?php if (!empty($_SESSION['password_warn']) && isset($_SESSION['password_days_left'])): ?>
+    <div class="alert alert-warning" style="background:linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%);border-left:4px solid #f59e0b;color:#92400e;display:flex;align-items:center;justify-content:space-between;padding:12px 18px;margin-bottom:18px;border-radius:var(--radius-sm);box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:1.25rem">⚠️</span>
+        <div style="font-size:0.88rem;line-height:1.4">
+          <strong>Password Expiration Notice:</strong> Your password is scheduled to expire in <strong><?= (int)$_SESSION['password_days_left'] ?> <?= (int)$_SESSION['password_days_left'] === 1 ? 'day' : 'days' ?></strong> per company 90-day security policy.
+        </div>
+      </div>
+      <a href="<?= APP_URL ?>/?page=profile" class="btn btn-sm" style="background:#f59e0b;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;padding:6px 14px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,0.1)">Update Password</a>
+    </div>
+    <?php endif; ?>
+
     <?php if ($flash): ?>
     <div class="alert alert-<?= e($flash['type']) ?>" data-countdown="20" style="position:relative;overflow:hidden;display:flex;align-items:center;gap:12px;padding-bottom:14px">
       <?= svgIcon($flash['type'] === 'success' ? 'check' : ($flash['type'] === 'danger' ? 'x' : 'info')) ?>

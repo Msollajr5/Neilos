@@ -17,23 +17,52 @@
 
     <!-- Section 1: Partner & KAM -->
     <div class="form-section">
-      <div class="form-section-title"><?= svgIcon('building', 16) ?> Partner & KAM</div>
+      <div class="form-section-title"><?= svgIcon('building', 16) ?> Partner &amp; Account Selection</div>
       <div class="form-grid">
         <?php if (!isPartnerUser() && !empty($partners)): ?>
-        <div class="form-group">
-          <label>Partner <span class="required">*</span></label>
-          <select name="partner_id" class="form-control" required>
-            <option value="">— Select Partner —</option>
-            <?php foreach($partners as $p): ?>
-            <option value="<?= $p['id'] ?>"><?= e($p['name']) ?></option>
-            <?php endforeach; ?>
+        <?php
+          $enterprisePartners = array_filter($partners, fn($p) => ($p['partner_category'] ?? '') === 'Enterprise Client' || ($p['partner_type'] ?? '') === 'Enterprise');
+          $wholesalePartners  = array_filter($partners, fn($p) => ($p['partner_category'] ?? '') !== 'Enterprise Client' && ($p['partner_type'] ?? '') !== 'Enterprise');
+          $curSelectedPId = (int)($selectedPartnerId ?: ($_POST['partner_id'] ?? 0));
+        ?>
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Select Partner / Enterprise Client <span class="required">*</span></label>
+          <select name="partner_id" id="partnerSelect" class="form-control" required onchange="handlePartnerSelect(this.value)">
+            <option value="">— Select Organization / Account —</option>
+            <?php if (!empty($enterprisePartners)): ?>
+            <optgroup label="🏛️ Enterprise &amp; Business Clients (Auto-Fills Customer Info)">
+              <?php foreach($enterprisePartners as $p): ?>
+              <option value="<?= $p['id'] ?>" <?= $curSelectedPId === (int)$p['id'] ? 'selected' : '' ?>>
+                <?= e($p['name']) ?><?= !empty($p['trading_name']) ? ' (' . e($p['trading_name']) . ')' : '' ?> — Enterprise Client
+              </option>
+              <?php endforeach; ?>
+            </optgroup>
+            <?php endif; ?>
+            <?php if (!empty($wholesalePartners)): ?>
+            <optgroup label="🏢 Wholesale Partners &amp; ISPs (Retail Subscribers)">
+              <?php foreach($wholesalePartners as $p): ?>
+              <option value="<?= $p['id'] ?>" <?= $curSelectedPId === (int)$p['id'] ? 'selected' : '' ?>>
+                <?= e($p['name']) ?> (<?= e($p['partner_type'] ?: 'ISP') ?>)
+              </option>
+              <?php endforeach; ?>
+            </optgroup>
+            <?php endif; ?>
           </select>
+          <small class="text-muted" style="margin-top:4px;display:block">
+            Selecting an <strong>Enterprise Client</strong> automatically pre-fills customer &amp; contact information below without repetitive data entry.
+          </small>
         </div>
         <?php endif; ?>
         <?php if (isPartnerUser()): ?>
         <div class="form-group">
           <label>Assigned Key Account Manager (KAM)</label>
           <input type="text" class="form-control" value="<?= e($partnerKamName ?: 'Assigned automatically by Neilos') ?>" readonly style="background:var(--surface-hover);color:var(--text-secondary);cursor:not-allowed">
+        </div>
+        <?php elseif (isKamUser()): ?>
+        <div class="form-group">
+          <label>Assigned Key Account Manager (KAM)</label>
+          <input type="hidden" name="assigned_kam" value="<?= e(currentUser()['full_name']) ?>">
+          <input type="text" class="form-control" value="<?= e(currentUser()['full_name']) ?> (You)" readonly style="background:var(--surface-hover);color:var(--text-secondary);cursor:not-allowed">
         </div>
         <?php else: ?>
         <div class="form-group">
@@ -47,40 +76,52 @@
         </div>
         <?php endif; ?>
 
-
       </div>
     </div>
 
     <!-- Section 2: Customer Info -->
     <div class="form-section">
       <div class="form-section-title"><?= svgIcon('users', 16) ?> Customer Information</div>
+
+      <!-- Enterprise Client Auto-Fill Active Notification Banner -->
+      <div id="enterpriseAutoFillAlert" style="display:none;background:rgba(15,76,129,0.06);border:1px solid rgba(15,76,129,0.25);border-left:4px solid var(--primary);border-radius:var(--radius-sm);padding:10px 16px;font-size:0.86rem;color:var(--primary);margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            🏛️ <strong>Enterprise Client Profile Loaded:</strong> Basic customer &amp; contact details have been automatically pre-filled from <strong id="autoFilledPartnerName"></strong>'s record.
+          </div>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="clearCustomerFields()" style="font-size:0.75rem;padding:3px 10px">
+            Clear Customer Fields
+          </button>
+        </div>
+      </div>
+
       <div class="form-grid">
         <div class="form-group">
           <label>Customer Name <span class="required">*</span></label>
-          <input type="text" name="customer_name" class="form-control" required placeholder="Full customer name">
+          <input type="text" name="customer_name" id="custNameInput" class="form-control" required placeholder="Full customer or company name">
         </div>
         <div class="form-group">
           <label>Customer Location <span class="required">*</span></label>
-          <input type="text" name="customer_location" class="form-control" required placeholder="Address / area">
+          <input type="text" name="customer_location" id="custLocInput" class="form-control" required placeholder="Address, building, or area">
         </div>
         <div class="form-group">
-          <label>GPS Coordinates</label>
-          <input type="text" name="gps_coordinates" class="form-control" placeholder="-6.7924, 39.2083">
+          <label>GPS Coordinates <span class="required">*</span></label>
+          <input type="text" name="gps_coordinates" class="form-control" required placeholder="-6.7924, 39.2083">
         </div>
         <div class="form-group">
           <label>Site Category <span class="required">*</span></label>
-          <select name="site_category" class="form-control" required>
+          <select name="site_category" id="siteCategorySelect" class="form-control" required>
             <option value="">— Select Site Category —</option>
+            <option value="Commercial Building">Commercial Building</option>
             <option value="Single Dwelling Unit (SDU)">Single Dwelling Unit (SDU)</option>
             <option value="Multi Dwelling Unit (MDU)">Multi Dwelling Unit (MDU)</option>
-            <option value="Commercial Building">Commercial Building</option>
             <option value="Cell Site">Cell Site</option>
             <option value="Data Center">Data Center</option>
           </select>
         </div>
         <div class="form-group">
           <label>Building Name</label>
-          <input type="text" name="building_name" class="form-control" placeholder="Building name">
+          <input type="text" name="building_name" id="buildingNameInput" class="form-control" placeholder="Building name">
         </div>
         <div class="form-group">
           <label>Floor Number</label>
@@ -88,19 +129,19 @@
         </div>
         <div class="form-group">
           <label>Apartment / Unit Number</label>
-          <input type="text" name="apartment_number" class="form-control" placeholder="e.g. Apt 12B">
+          <input type="text" name="apartment_number" class="form-control" placeholder="e.g. Suite 401">
         </div>
         <div class="form-group">
           <label>Contact Person Name <span class="required">*</span></label>
-          <input type="text" name="customer_contact_name" class="form-control" placeholder="Contact person full name" required>
+          <input type="text" name="customer_contact_name" id="custContactNameInput" class="form-control" placeholder="Contact person full name" required>
         </div>
         <div class="form-group">
           <label>Contact Phone <span class="required">*</span></label>
-          <input type="tel" name="customer_contact_phone" class="form-control" placeholder="+255 7xx xxx xxx" required>
+          <input type="tel" name="customer_contact_phone" id="custContactPhoneInput" class="form-control" placeholder="+255 7xx xxx xxx" required>
         </div>
         <div class="form-group">
           <label>Contact Email <span class="required">*</span></label>
-          <input type="email" name="customer_contact_email" class="form-control" placeholder="customer@example.com" required>
+          <input type="email" name="customer_contact_email" id="custContactEmailInput" class="form-control" placeholder="customer@example.com" required>
         </div>
       </div>
     </div>
@@ -113,28 +154,44 @@
           <label>Service Type <span class="required">*</span></label>
           <select name="service_type" id="serviceType" class="form-control" required onchange="handleServiceType(this.value)">
             <option value="">— Select Service Type —</option>
-            <option value="Layer 2 ( last mile)">Layer 2 ( last mile)</option>
-            <option value="FTTH">FTTH</option>
-            <option value="FTTB">FTTB</option>
-            <option value="BIA (Broadband Internet Access)">BIA (Broadband Internet Access)</option>
-            <option value="Remote Hands Only">Remote Hands Only</option>
+            <?php
+              $dynServiceTypes = getActiveServiceTypes($db);
+              foreach ($dynServiceTypes as $stName):
+                if (!empty($isCurrentPartnerEnterprise) && (stripos($stName, 'FTTH') !== false || stripos($stName, 'FTTB') !== false)) {
+                    continue;
+                }
+            ?>
+            <option value="<?= e($stName) ?>"><?= e($stName) ?></option>
+            <?php endforeach; ?>
           </select>
+          <div id="enterpriseCatalogNotice" style="display:<?= !empty($isCurrentPartnerEnterprise) ? 'block' : 'none' ?>;margin-top:6px;font-size:0.8rem;color:var(--primary)">
+            🏛️ <strong>Enterprise Dedicated Catalog:</strong> Retail shared broadband (FTTH/FTTB) is hidden for Enterprise Clients.
+          </div>
         </div>
 
-        <!-- FTTH/FTTB package -->
+        <!-- FTTH package -->
         <div class="form-group" id="fttxPackageRow" style="display:none">
-          <label>FTTx Package <span class="required">*</span></label>
-          <select name="fttx_package" id="fttxPackage" class="form-control" onchange="updateFTTxPrice(this.value)">
+          <label id="fttxPackageLabel">FTTH Retail Package <span class="required">*</span></label>
+          <select name="fttx_package" id="fttxPackage" class="form-control" data-is-partner="<?= isPartnerUser() ? '1' : '0' ?>" onchange="updateFTTxPrice(this.value)">
             <option value="">— Select Package —</option>
-            <option value="FTTx-40">FTTx-40 (27,500 TZS / mo)</option>
-            <option value="FTTx-50">FTTx-50 (33,000 TZS / mo)</option>
-            <option value="FTTx-60">FTTx-60 (39,500 TZS / mo)</option>
-            <option value="FTTx-70">FTTx-70 (46,000 TZS / mo)</option>
-            <option value="FTTx-80">FTTx-80 (52,500 TZS / mo)</option>
-            <option value="FTTx-90">FTTx-90 (59,000 TZS / mo)</option>
-            <option value="FTTx-100">FTTx-100 (65,500 TZS / mo)</option>
+            <?php
+              $dynPkgs = getActivePricingPackages('FTTH', $db);
+              foreach ($dynPkgs as $pRow):
+                $pCode = $pRow['package_code'] ?: $pRow['package_name'];
+                $curr = $pRow['currency'] ?: 'USD';
+                $pPriceStr = ($curr === 'USD') ? '$' . number_format((float)$pRow['mrc_amount'], 2) . ' USD / mo' : number_format((float)$pRow['mrc_amount'], 0) . ' TZS / mo';
+                $pOptLabel = isPartnerUser() ? $pRow['package_name'] : "{$pRow['package_name']} ({$pPriceStr})";
+            ?>
+              <option value="<?= e($pCode) ?>" data-service="<?= e($pRow['service_type']) ?>"><?= e($pOptLabel) ?></option>
+            <?php endforeach; ?>
           </select>
         </div>
+        <script>
+          window.SERVER_PRICING_PACKAGES = <?= json_encode(getActivePricingPackages(null, $db)) ?>;
+          if (typeof getDynamicFttxPackageOptions === 'function') {
+            fttxPackageOptions = getDynamicFttxPackageOptions();
+          }
+        </script>
 
         <!-- BIA bandwidth -->
         <div class="form-group" id="diaRow" style="display:none">
@@ -148,7 +205,17 @@
         <!-- L2 NNI -->
         <div class="form-group" id="nniRow" style="display:none">
           <label>NNI / Handoff Point <span class="required">*</span></label>
-          <input type="text" name="nni_location" class="form-control" placeholder="e.g. Neilos Dar es Salaam POP">
+          <input type="text" name="nni_location" class="form-control" placeholder="e.g. Wingu DC">
+        </div>
+
+        <!-- L2 NNI Port Size -->
+        <div class="form-group" id="nniPortSizeRow" style="display:none">
+          <label>NNI Port Size <span class="required">*</span></label>
+          <select name="nni_port_size" id="nniPortSize" class="form-control">
+            <option value="1G">1G</option>
+            <option value="10G" selected>10G</option>
+            <option value="40G">40G</option>
+          </select>
         </div>
 
         <!-- L2 Capacity -->
@@ -158,7 +225,6 @@
             <input type="number" name="aggregate_capacity" id="aggregateCapacity" class="form-control" placeholder="e.g. 50" min="1" step="1" oninput="updateL2Price(this.value)" onchange="updateL2Price(this.value)">
             <span class="input-addon">Mbps</span>
           </div>
-          <small style="color:var(--text-muted);font-size:.75rem;margin-top:4px;display:block">100 Mbps or less: TZS 110,000/mo · 101 Mbps and above: TZS 220,000/mo</small>
         </div>
 
         <!-- Contract term -->
@@ -185,7 +251,7 @@
         <!-- Other products pricing note -->
         <div class="form-group form-col-full" id="otherProductNoteRow" style="display:none">
           <div style="background:var(--surface-hover);border:1px solid var(--border);padding:12px;border-radius:6px;font-size:.875rem;color:var(--text-secondary)">
-            <strong><?= svgIcon('info', 16) ?> Pricing Note:</strong> Prices for this product are not pre-set. BSA will insert standard/revised NRC and KAM will insert MRC during review.
+            <strong><?= svgIcon('info', 16) ?> Pricing Note:</strong> Predefined package costs are only available for <strong>FTTH</strong> and <strong>DIA</strong> service types. For other products, BSA will insert standard/revised NRC and KAM will insert MRC during feasibility &amp; commercial review.
           </div>
         </div>
 
@@ -196,7 +262,8 @@
       </div>
     </div>
 
-    <!-- Section 4: Commercial Summary -->
+    <!-- Section 4: Commercial Summary (Hidden for Partner users) -->
+    <?php if (!isPartnerUser()): ?>
     <div class="form-section" id="commercialSection" style="display:none">
       <div class="form-section-title"><?= svgIcon('chart', 16) ?> Commercial Summary</div>
 
@@ -259,6 +326,20 @@
         </div>
       </div>
     </div>
+    <?php else: ?>
+      <!-- Hidden calculation fields preserved for partner submissions -->
+      <input type="hidden" name="base_nrc_usd" id="hidBaseNRC" value="0">
+      <input type="hidden" name="remote_hands_nrc_usd" id="hidRHNRC" value="0">
+      <input type="hidden" name="nrc_subtotal_usd" id="hidNRCSub" value="0">
+      <input type="hidden" name="vat_on_nrc" id="hidVatNRC" value="0">
+      <input type="hidden" name="total_nrc_incl_vat" id="hidTotalNRC" value="0">
+      <input type="hidden" name="base_mrc" id="hidBaseMRC" value="0">
+      <input type="hidden" name="mrc_currency" id="hidMRCCurr" value="TZS">
+      <input type="hidden" name="discount_pct" id="hidDiscPct" value="0">
+      <input type="hidden" name="discount_amount" id="hidDiscAmt" value="0">
+      <input type="hidden" name="vat_on_mrc" id="hidVatMRC" value="0">
+      <input type="hidden" name="total_mrc_incl_vat" id="hidTotalMRC" value="0">
+    <?php endif; ?>
 
     <!-- Section 5: Documents -->
     <div class="form-section">
@@ -283,3 +364,151 @@
 </div>
 
 </form>
+
+<script>
+window.ALL_SERVICE_TYPES = <?= json_encode(getActiveServiceTypes($db)) ?>;
+window.PARTNERS_DATA = <?= !empty($partners) ? json_encode(array_combine(array_column($partners, 'id'), $partners), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : '{}' ?>;
+window.IS_CURRENT_PARTNER_ENTERPRISE = <?= !empty($isCurrentPartnerEnterprise) ? 'true' : 'false' ?>;
+
+function isRetailBroadband(st) {
+  const upper = (st || '').toUpperCase();
+  return upper.includes('FTTH') || upper.includes('FTTB') || upper.includes('FIBRE TO THE HOME') || upper.includes('FIBRE TO THE BUILDING');
+}
+
+function updateServiceTypesForPartner(isEnterprise) {
+  const stSelect = document.getElementById('serviceType');
+  if (!stSelect || !window.ALL_SERVICE_TYPES) return;
+
+  const currentVal = stSelect.value;
+  const filteredTypes = isEnterprise 
+    ? window.ALL_SERVICE_TYPES.filter(st => !isRetailBroadband(st))
+    : window.ALL_SERVICE_TYPES;
+
+  stSelect.innerHTML = '<option value="">— Select Service Type —</option>';
+  filteredTypes.forEach(st => {
+    const opt = document.createElement('option');
+    opt.value = st;
+    opt.textContent = st;
+    if (st === currentVal) {
+      opt.selected = true;
+    }
+    stSelect.appendChild(opt);
+  });
+
+  // If previous selection was FTTH/FTTB and partner is Enterprise, reset selection
+  if (isEnterprise && isRetailBroadband(currentVal)) {
+    stSelect.value = '';
+    if (typeof handleServiceType === 'function') {
+      handleServiceType('');
+    }
+  }
+
+  const noticeEl = document.getElementById('enterpriseCatalogNotice');
+  if (noticeEl) {
+    noticeEl.style.display = isEnterprise ? 'block' : 'none';
+  }
+}
+
+function handlePartnerSelect(partnerId) {
+  if (!partnerId || !window.PARTNERS_DATA || !window.PARTNERS_DATA[partnerId]) {
+    hideEnterpriseAlert();
+    updateServiceTypesForPartner(false);
+    return;
+  }
+
+  const p = window.PARTNERS_DATA[partnerId];
+  const isEnterprise = (p.partner_category === 'Enterprise Client' || p.partner_type === 'Enterprise' || p.partner_type === 'Government');
+
+  // Dynamically filter service type dropdown for Enterprise vs Wholesale
+  updateServiceTypesForPartner(isEnterprise);
+
+  if (isEnterprise) {
+    // 1. Auto-fill customer name
+    const custNameEl = document.getElementById('custNameInput');
+    if (custNameEl) {
+      custNameEl.value = p.name || '';
+      custNameEl.style.borderColor = 'var(--primary)';
+      setTimeout(() => custNameEl.style.borderColor = '', 1500);
+    }
+
+    // 2. Auto-fill location
+    const custLocEl = document.getElementById('custLocInput');
+    if (custLocEl) {
+      let loc = (p.address || '').trim();
+      if (p.city_region && !loc.toLowerCase().includes(p.city_region.toLowerCase())) {
+        loc = loc ? (loc + ', ' + p.city_region) : p.city_region;
+      }
+      custLocEl.value = loc;
+      custLocEl.style.borderColor = 'var(--primary)';
+      setTimeout(() => custLocEl.style.borderColor = '', 1500);
+    }
+
+    // 3. Auto-fill site category default for Enterprise
+    const siteCatEl = document.getElementById('siteCategorySelect');
+    if (siteCatEl && !siteCatEl.value) {
+      siteCatEl.value = 'Commercial Building';
+    }
+
+    // 4. Auto-fill contact details
+    const contactNameEl = document.getElementById('custContactNameInput');
+    if (contactNameEl) {
+      contactNameEl.value = p.contact_name || p.name || '';
+      contactNameEl.style.borderColor = 'var(--primary)';
+      setTimeout(() => contactNameEl.style.borderColor = '', 1500);
+    }
+
+    const contactPhoneEl = document.getElementById('custContactPhoneInput');
+    if (contactPhoneEl) {
+      contactPhoneEl.value = p.contact_phone || '';
+      contactPhoneEl.style.borderColor = 'var(--primary)';
+      setTimeout(() => contactPhoneEl.style.borderColor = '', 1500);
+    }
+
+    const contactEmailEl = document.getElementById('custContactEmailInput');
+    if (contactEmailEl) {
+      contactEmailEl.value = p.contact_email || '';
+      contactEmailEl.style.borderColor = 'var(--primary)';
+      setTimeout(() => contactEmailEl.style.borderColor = '', 1500);
+    }
+
+    // Show visual notice banner
+    showEnterpriseAlert(p.name);
+  } else {
+    hideEnterpriseAlert();
+  }
+}
+
+function showEnterpriseAlert(partnerName) {
+  const alertEl = document.getElementById('enterpriseAutoFillAlert');
+  const nameEl = document.getElementById('autoFilledPartnerName');
+  if (nameEl) nameEl.textContent = partnerName;
+  if (alertEl) {
+    alertEl.style.display = 'block';
+    alertEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function hideEnterpriseAlert() {
+  const alertEl = document.getElementById('enterpriseAutoFillAlert');
+  if (alertEl) alertEl.style.display = 'none';
+}
+
+function clearCustomerFields() {
+  const ids = ['custNameInput', 'custLocInput', 'custContactNameInput', 'custContactPhoneInput', 'custContactEmailInput', 'buildingNameInput'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  hideEnterpriseAlert();
+}
+
+// Trigger auto-fill on initial page load if partner is pre-selected
+document.addEventListener('DOMContentLoaded', () => {
+  const partnerSelect = document.getElementById('partnerSelect');
+  if (partnerSelect && partnerSelect.value) {
+    handlePartnerSelect(partnerSelect.value);
+  } else if (window.IS_CURRENT_PARTNER_ENTERPRISE) {
+    updateServiceTypesForPartner(true);
+  }
+});
+</script>

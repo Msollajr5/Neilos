@@ -1,0 +1,127 @@
+Max row: 82, Max col: 15
+
+--- NON-EMPTY ROWS & CONTENT ---
+Row  2 (h=15.0): C2(B): 'SERVICE ORDER FORM (SOF) - SAVANNA BUSINESS ENTERPRISE\t\t\t\t\t\t\t'
+Row  4 (h=15.0): C2(B): 'CUSTOMER INFORMATION' | C8(H): 'SAVANNA BIUSINESS ENTERPRISE INFORMATION'
+Row  5 (h=15.0): C2(B): 'Company  Name (KYC)' | C8(H): 'SOF Number' | C9(I): 'Sav\\SOF\\0015'
+Row  6 (h=15.0): C2(B): 'Technical contact Name ' | C8(H): 'Technical contact Name ' | C9(I): 'Tony Koskei'
+Row  7 (h=15.0): C2(B): 'Phone' | C8(H): 'Phone' | C9(I): 677050940
+Row  8 (h=15.0): C2(B): 'Email' | C8(H): 'Email' | C9(I): 'tonny.koskei@savannafibre.co.tz'
+Row 10 (h=15.0): C2(B): 'Billing contact Name' | C8(H): 'Billing contact Name'
+Row 11 (h=15.0): C2(B): 'Phone' | C8(H): 'Phone'
+Row 12 (h=15.0): C2(B): 'Email' | C8(H): 'Email' | C9(I): ' financetz@savannafibre.co.tz'
+Row 14 (h=15.0): C2(B): 'SERVICE REQUEST' | C8(H): 'SITE DETAILS'
+Row 15 (h=15.0): C2(B): 'Bandwidth' | C8(H): 'NNI Port Size (1G, 10G, 40G)'
+Row 16 (h=15.0): C2(B): 'Service Type' | C3(C): 'DIA' | C4(D): '✔' | C8(H): 'A-End Site GPS Cordiantes' | C9(I): 'Dar Es Salaam '
+Row 17 (h=15.0): C8(H): 'A-End Street name & City' | C9(I): 'Mikocheni A Senga Road'
+Row 19 (h=15.0): C8(H): 'B-End Site GPS Cordiantes'
+Row 20 (h=15.0): C2(B): 'Initial Remote hands required' | C3(C): 'YES                               ' | C8(H): 'B-end Street name & City'
+Row 21 (h=15.0): C2(B): 'New Cross Connect Requred' | C3(C): 'YES                               ' | C8(H): "Savanna's tool Feasibility" | C9(I): 'Feasible  ' | C11(K): ' Not-Feasible'
+Row 23 (h=12.5): C2(B): 'COMMERCIAL'
+Row 24 (h=15.0): C2(B): 'Billing Cycle' | C3(C): 'MONTHLY' | C4(D): '✔' | C8(H): ' Currency of Payment' | C9(I): 'TZS' | C10(J): '✔' | C11(K): 'USD'
+Row 25 (h=15.0): C2(B): 'Minimum Term (Months)' | C3(C): 12 | C8(H): 'USD to TZ rate' | C9(I): 2700
+Row 26 (h=15.0): C2(B): 'Monthly Charges ' | C3(C): 262.96 | C8(H): 'Set-Up Charges ' | C9(I): 0
+Row 27 (h=15.0): C2(B): 'VAT 18%' | C3(C): '=0.18*C26' | C8(H): 'VAT 18%' | C9(I): '=0.18*I26'
+Row 28 (h=15.0): C2(B): 'Total MRC Charge' | C3(C): '=SUM(C26:G27)' | C8(H): 'Total NRC Charge' | C9(I): '=SUM(I26:M27)'
+Row 30 (h=14.0): C2(B): 'TERMS AND CONDITIONS'
+Row 31 (h=15.0): C2(B): '1. All Invoices shall be raise in TZS at the rate specified above'
+Row 32 (h=15.0): C2(B): '2. These Terms and Conditions constitute the agreement for services between Savanna Business Enterprise Tanzania and the Client.'
+Row 33 (h=auto): C2(B): "3. This agreement shall, subject to the applicable termination provisions in the Master Services Agreement, continue for the initial fixed term indicated in this Service Order Form and shall commence from the Service activation date at the Customer's premises."
+Row 34 (h=15.0): C2(B): '4. At the end of the initial term, the Service will automatically renew for successive renewal terms equal in length to the initial term unless and until '
+Row 35 (h=15.0): C2(B): "terminated by either Party in any given renewal term, with 30 days' termination notice. Such termination by the Customer shall be in writing and delivered to the Account Manager."
+Row 36 (h=15.0): C2(B): '5. Billing for the Services shall commence on the date that the respective Service has been activated by Savanna Business Enterprise.'
+Row 37 (h=25.0): C2(B): '6. Savanna Business Enterprise will invoice the Customer monthly for payment in full within 30 days of the date of the invoice. Savanna Business Enterprise reserves the right to suspend the Service if the Customer defaults on payment and may, at its discretion, suspend services where charges have not been paid by the due date.'
+Row 38 (h=15.0): C2(B): '7. If the customer terminates the service before the end of the initial term, Customer shall pay the Early Termination Fee and refund any discounts received.'
+Row 39 (h=15.0): C2(B): 'Payment shall be made within  (15) days of termination.'
+Row 40 (h=15.0): C2(B): '8. By signing this Service Order Form, the Customer confirms the accuracy of the information provided, agrees to notify Savanna Business Enterprise of any changes, and acknowledges that this Form,.'
+Row 41 (h=15.0): C2(B): '9. The construction, validity and performance of these Terms and Conditions shall be governed by the Laws of the United Republic of Tanzania.'
+Row 43 (h=27.25): C2(B): 'DECLARATION '
+Row 44 (h=15.0): C2(B): 'By signing below, the authorized representatives of both parties agree to the terms and conditions outlined in this Service Order Form and the referenced Master Service Agreement. Savanna  is authorized to proceed with the installation and provisioning of the service described herein.'
+Row 45 (h=17.0): C3(C): 'SMARTCODES LTD' | C8(H): 'Savanna Business Enterprise'
+Row 46 (h=18.0): C2(B): 'Name' | C8(H): 'Name'
+Row 47 (h=23.9): C2(B): 'Title' | C8(H): 'Title'
+Row 48 (h=19.25): C2(B): 'Signature & Date' | C8(H): 'Signature & Date'
+Row 49 (h=12.5): C2(B): 'Stamp' | C8(H): 'Stamp'
+
+--- COLUMN WIDTHS ---
+Col  1 (A): width = 4.81640625
+Col  2 (B): width = 26.81640625
+Col  3 (C): width = 12.26953125
+Col  4 (D): width = 3.1796875
+Col  5 (E): width = 8.0
+Col  6 (F): width = 3.1796875
+Col  7 (G): width = 17.81640625
+Col  8 (H): width = 26.7265625
+Col  9 (I): width = 14.26953125
+Col 10 (J): width = 3.0
+Col 11 (K): width = 10.26953125
+Col 12 (L): width = 3.0
+Col 13 (M): width = 9.26953125
+Col 14 (N): width = 3.453125
+Col 15 (O): width = 7.81640625
+
+--- MERGED RANGES ---
+B13:O13
+B14:G14
+B16:B19
+B22:O22
+B2:J3
+B30:O30
+B31:O31
+B32:O32
+B33:O33
+B34:O34
+B35:O35
+B36:O36
+B37:O37
+B38:O38
+B39:O39
+B40:O40
+B41:O41
+B44:O44
+B4:G4
+B52:O52
+B9:O9
+C10:G10
+C11:G11
+C12:G12
+C15:G15
+C45:G45
+C46:G46
+C47:G47
+C48:G49
+C5:G5
+C6:G6
+C7:G7
+C8:G8
+D26:G26
+D27:G27
+D28:G28
+H17:H18
+H45:O45
+I10:O10
+I11:O11
+I12:O12
+I14:O14
+I15:O15
+I16:M16
+I17:O17
+I18:N18
+I19:O19
+I20:O20
+I23:O23
+I46:O46
+I47:O47
+I48:O49
+I5:J5
+I6:O6
+I7:O7
+I8:O8
+J26:O26
+J27:O27
+J28:O28
+K2:O5
+M21:O21
+M24:O24
+M25:O25
+N16:O16

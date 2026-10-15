@@ -1,8 +1,10 @@
 <?php
 $isContractorView = isContractorUser();
 $jobStatus = $assignment['status'];
-$canUpdate = $isContractorView ? in_array($jobStatus, ['Assigned','Accepted','In Progress','Returned']) : true;
-$canSubmit = $isContractorView ? in_array($jobStatus, ['Accepted','In Progress','Returned']) : true;
+$isOrderClosed = ($assignment['order_status'] ?? '') === 'Closed';
+$canModifyEvidence = !$isOrderClosed;
+$canUpdate = !$isOrderClosed && ($isContractorView ? in_array($jobStatus, ['Assigned','Accepted','In Progress','Returned']) : true);
+$canSubmit = !$isOrderClosed && ($isContractorView ? in_array($jobStatus, ['Accepted','In Progress','Returned']) : true);
 
 $svc = trim($assignment['service_type'] ?? '');
 if ($svc === '') {
@@ -32,6 +34,32 @@ if ($svc === '') {
   </div>
 </div>
 
+<?php if ($jobStatus === 'Returned' || !empty($assignment['rejection_reason'])): ?>
+<div class="alert alert-danger" style="margin-bottom:20px;display:flex;align-items:flex-start;gap:14px;padding:16px 20px;border-radius:10px;background:#fef2f2;border:2px solid #ef4444;color:#991b1b;box-shadow:0 2px 8px rgba(239,68,68,0.15)">
+  <div style="font-size:1.6rem;line-height:1;flex-shrink:0">⚠️</div>
+  <div style="flex:1">
+    <div style="font-weight:800;font-size:1.05rem;margin-bottom:6px;color:#991b1b;letter-spacing:-0.01em">
+      Job Returned / Rejected by Project Manager:
+    </div>
+    <div style="font-weight:600;font-size:0.95rem;line-height:1.5;color:#7f1d1d;white-space:pre-wrap;background:#ffffff;padding:10px 14px;border-radius:6px;border:1px solid #fca5a5">
+      <?= e($assignment['rejection_reason'] ?: $assignment['completion_remarks']) ?>
+    </div>
+    <div style="font-size:0.82rem;color:#b91c1c;margin-top:6px;font-weight:500">
+      Please review the requested changes, update or re-upload the required evidence files, and re-submit completion below.
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
+<?php if ($isOrderClosed): ?>
+<div class="alert alert-info" style="margin-bottom:20px;display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:8px">
+  <div style="font-size:1.25rem"><?= svgIcon('lock', 20) ?></div>
+  <div>
+    <strong>Order is Closed:</strong> Evidence files are permanently locked and cannot be replaced or deleted. Job management, evidence upload, progress updates, and completion submissions are closed.
+  </div>
+</div>
+<?php endif; ?>
+
 <!-- Job Details & Evidence Checklist Top Grid -->
 <div class="row g-4" style="margin-bottom:24px">
   <!-- Job Details Column -->
@@ -44,6 +72,19 @@ if ($svc === '') {
           <div class="form-group"><label>Order Status</label><div><span class="badge <?= orderStatusClass($assignment['order_status']) ?>"><?= e($assignment['order_status']) ?></span></div></div>
           <div class="form-group"><label>Customer</label><div class="font-600"><?= e($assignment['customer_name']) ?></div></div>
           <div class="form-group"><label>Location</label><div><?= e($assignment['customer_location'] ?: '—') ?></div></div>
+          <div class="form-group">
+            <label>Pickup Location</label>
+            <div>
+              <?php if (!empty($assignment['pickup_location'])): ?>
+                <span class="font-600" style="color:var(--primary)">📍 <?= e($assignment['pickup_location']) ?></span>
+              <?php else: ?>
+                <span class="text-muted" style="font-style:italic">not updated</span>
+              <?php endif; ?>
+            </div>
+          </div>
+          <?php if (!empty($assignment['contractor_team_name'])): ?>
+          <div class="form-group"><label>Field Team</label><div><span class="badge badge-secondary font-600">👷 <?= e($assignment['contractor_team_name']) ?></span></div></div>
+          <?php endif; ?>
           <?php if ($assignment['building_name']): ?><div class="form-group"><label>Building</label><div><?= e($assignment['building_name']) ?></div></div><?php endif; ?>
           <?php if ($assignment['gps_coordinates']): ?><div class="form-group"><label>GPS</label><div><?= e($assignment['gps_coordinates']) ?></div></div><?php endif; ?>
           <div class="form-group"><label>Assigned By</label><div><?= e($assignment['assigned_by_name'] ?: '—') ?></div></div>
@@ -168,18 +209,21 @@ if ($svc === '') {
                   'is_mandatory'  => $item['is_mandatory'],
                   'assignment_id' => $assignment['id'],
                   'order_id'      => $assignment['order_id'],
+                  'can_modify'    => $canModifyEvidence,
                   'files'         => $item['files']
                 ]), ENT_QUOTES, 'UTF-8') ?>)" title="View uploaded file preview and details">
                   <?= svgIcon('eye', 13) ?> View
                 </button>
 
-                <!-- 2. Replace Button -->
+                <!-- 2. Replace Button (Hidden when order is Closed for ALL users) -->
+                <?php if ($canModifyEvidence): ?>
                 <button type="button" class="btn-file-action btn-file-replace" onclick="event.stopPropagation(); triggerReplaceForEvidence('<?= e($item['evidence_type']) ?>')" title="Upload replacement file for this item">
                   <?= svgIcon('edit', 13) ?> Replace
                 </button>
+                <?php endif; ?>
 
-                <!-- 3. Delete Button -->
-                <?php if ($latestFile): ?>
+                <!-- 3. Delete Button (Hidden when order is Closed for ALL users) -->
+                <?php if ($latestFile && $canModifyEvidence): ?>
                 <form method="POST" action="<?= APP_URL ?>/?page=contractor&action=delete_evidence" style="display:inline" data-confirm="Delete evidence for <?= e($item['evidence_type']) ?>? This action cannot be undone." data-confirm-title="Delete Evidence File?" data-confirm-btn="Delete File" data-confirm-class="btn-danger" data-confirm-icon="🗑️" onclick="event.stopPropagation()">
                   <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
                   <input type="hidden" name="evidence_id" value="<?= $latestFile['id'] ?>">
@@ -209,8 +253,8 @@ if ($svc === '') {
   </div>
 </div>
 
-<!-- Admin / PM Job Management Panel -->
-<?php if (!isContractorUser()): ?>
+<!-- Admin / PM Job Management Panel (Hidden when order is Closed for ALL users) -->
+<?php if (!isContractorUser() && !$isOrderClosed): ?>
 <div class="card" style="margin-bottom:24px;border:2px solid var(--primary)">
   <div class="card-header" style="background:var(--surface-hover)">
     <div class="card-title"><?= svgIcon('edit') ?> Admin / PM Job Management</div>
@@ -252,7 +296,7 @@ if ($svc === '') {
 <?php endif; ?>
 
 <!-- Job Accept (if Assigned) -->
-<?php if ($jobStatus === 'Assigned' && $isContractorView): ?>
+<?php if ($jobStatus === 'Assigned' && $isContractorView && !$isOrderClosed): ?>
 <div class="card" style="margin-bottom:24px;border:2px solid var(--warning)">
   <div class="card-body" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
     <div style="flex:1">
@@ -268,35 +312,50 @@ if ($svc === '') {
 </div>
 <?php endif; ?>
 
-<!-- Evidence Upload -->
-<?php if ($canUpdate): ?>
+<!-- Evidence Upload (Hidden when order is Closed for ALL users) -->
+<?php if ($canUpdate && !$isOrderClosed): ?>
 <div class="card" id="uploadEvidenceCard" style="margin-bottom:24px;transition:outline 0.3s ease">
-  <div class="card-header"><div class="card-title"><?= svgIcon('upload') ?> Upload Evidence</div></div>
+  <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div class="card-title"><?= svgIcon('upload') ?> Upload Evidence</div>
+    <button type="button" class="btn btn-warning btn-sm" data-modal-open="additionalCostModal" style="display:inline-flex;align-items:center;gap:6px;font-weight:700">
+      <?= svgIcon('document', 14) ?> Upload Additional Cost Form
+    </button>
+  </div>
   <div class="card-body">
     <form method="POST" action="<?= APP_URL ?>/?page=contractor&action=upload_evidence" enctype="multipart/form-data" id="evidenceUploadForm">
       <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
       <input type="hidden" name="assignment_id" value="<?= $assignment['id'] ?>">
       <input type="hidden" name="order_id" value="<?= $assignment['order_id'] ?>">
       
+      <div class="form-group" style="margin-bottom:16px">
+        <label class="form-label" style="font-weight:600">Pickup Location <span class="text-muted font-sm font-normal">(The place in which installation was done)</span></label>
+        <div style="position:relative">
+          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-secondary)">📍</span>
+          <input type="text" name="pickup_location" id="pickup_location_input" class="form-control" style="padding-left:32px" value="<?= e($assignment['pickup_location'] ?? '') ?>" placeholder="e.g. Building A, Floor 3, Server Room / Installation Site">
+        </div>
+      </div>
+
       <div class="row g-3 align-items-end" style="margin-bottom:16px">
         <div class="col-md-4" id="evidenceTypeCol">
           <label class="form-label">Evidence Type <span class="text-danger">*</span></label>
-          <select name="evidence_type" id="evidence_type_select" class="form-control" required>
-            <option value="">Select type...</option>
-            <option value="Site Photo">Site Photo</option>
-            <option value="ONT/ONU Serial">ONT/ONU Serial</option>
-            <option value="Signal Test">Signal Test</option>
-            <option value="Speed Test">Speed Test</option>
-            <option value="Ping Test">Ping Test</option>
-            <option value="Latency Test">Latency Test</option>
-            <option value="UAT Sign-off">UAT Sign-off</option>
-            <option value="Installation Remarks">Installation Remarks</option>
-            <option value="Other">Other</option>
+          <select name="evidence_type" id="evidence_type_select" class="form-control" required onchange="handleEvidenceTypeChange(this.value)">
+            <option value="">Select evidence type...</option>
+            <option value="Site Photo">1. Site Photo</option>
+            <option value="Signal Test">2. Signal Test</option>
+            <option value="Serial Number">3. Serial Number</option>
+            <option value="Speed Test">4. Speed Test</option>
+            <option value="Ping Test">5. Ping Test</option>
+            <option value="UAT">6. UAT</option>
+            <option value="Additional Cost Form">7. Additional Cost Form</option>
           </select>
         </div>
         <div class="col-md-4" id="serialNumberCol" style="display:none">
           <label class="form-label">Serial Number <span class="text-muted font-sm">(for ONT/ONU)</span></label>
           <input type="text" name="serial_number" id="serial_number_input" class="form-control" placeholder="e.g. HWTC1234567">
+        </div>
+        <div class="col-md-4" id="costAmountCol" style="display:none">
+          <label class="form-label">Additional Cost ($ USD) <span class="text-danger">*</span></label>
+          <input type="number" step="0.01" min="0" name="cost_amount" id="cost_amount_input" class="form-control" placeholder="0.00">
         </div>
         <div class="col-md-8" id="fileCol">
           <label class="form-label">Files <span class="text-muted font-sm">(Multiple photos / screenshots / PDFs supported)</span></label>
@@ -305,7 +364,7 @@ if ($svc === '') {
       </div>
 
       <div class="form-group" style="margin-bottom:16px">
-        <label class="form-label">Notes</label>
+        <label class="form-label">Notes / Description</label>
         <textarea name="notes" id="notes_input" class="form-control" rows="2" placeholder="Describe the evidence or any observations..."></textarea>
       </div>
 
@@ -370,8 +429,8 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 <?php endif; ?>
 
-<!-- Progress Update -->
-<?php if ($canUpdate): ?>
+<!-- Progress Update (Hidden when order is Closed for ALL users) -->
+<?php if ($canUpdate && !$isOrderClosed): ?>
 <div class="card" style="margin-bottom:24px">
   <div class="card-header"><div class="card-title">Post Progress Update</div></div>
   <div class="card-body">
@@ -423,8 +482,8 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 <?php endif; ?>
 
-<!-- Submit Completion -->
-<?php if ($canSubmit): ?>
+<!-- Submit Completion (Hidden when order is Closed for ALL users) -->
+<?php if ($canSubmit && !$isOrderClosed): ?>
 <div class="card" style="margin-bottom:24px;border:2px solid var(--success)">
   <div class="card-header" style="background:rgba(var(--success-rgb,34,197,94),.1)">
     <div class="card-title"><?= svgIcon('check') ?> Submit Job Completion</div>
@@ -435,6 +494,28 @@ document.addEventListener('DOMContentLoaded', function() {
       <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
       <input type="hidden" name="assignment_id" value="<?= $assignment['id'] ?>">
       <input type="hidden" name="order_id" value="<?= $assignment['order_id'] ?>">
+      <div class="form-grid form-grid-2" style="margin-bottom:14px">
+        <div class="form-group">
+          <label class="form-label" style="font-weight:600">Pickup / Installation Location</label>
+          <div style="position:relative">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-secondary)">📍</span>
+            <input type="text" name="pickup_location" class="form-control" style="padding-left:32px" value="<?= e($assignment['pickup_location'] ?? '') ?>" placeholder="Confirmed physical installation / pickup site address...">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="font-weight:600">Assigned Field Crew / Team <span class="text-muted font-sm">(Optional)</span></label>
+          <select name="contractor_team_id" class="form-control">
+            <option value="">-- Select Registered Team --</option>
+            <?php if (!empty($contractorTeams)): ?>
+              <?php foreach ($contractorTeams as $tm): ?>
+                <option value="<?= $tm['id'] ?>" <?= ($assignment['contractor_team_id'] ?? '') == $tm['id'] ? 'selected' : '' ?>>
+                  <?= e($tm['team_name']) ?><?= !empty($tm['leader_name']) ? ' (' . e($tm['leader_name']) . ')' : '' ?>
+                </option>
+              <?php endforeach; ?>
+            <?php endif; ?>
+          </select>
+        </div>
+      </div>
       <div class="form-group">
         <label>Completion Remarks</label>
         <textarea name="completion_remarks" class="form-control" rows="3" placeholder="Any final remarks about the installation..."></textarea>
@@ -447,12 +528,33 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- Tabs: Evidence uploaded, Progress -->
 <div class="tabs" data-group="job">
-  <button class="tab-btn active" data-tab="evidence-list" data-tab-group="job">Evidence Uploaded (<?= count($evidence) ?>)</button>
+  <button class="tab-btn active" data-tab="evidence-list" data-tab-group="job">Evidence Uploaded &amp; Photos (<?= count($evidence) ?>)</button>
   <button class="tab-btn" data-tab="progress-list" data-tab-group="job">Progress Updates (<?= count($progressUpdates) ?>)</button>
 </div>
 
 <div class="tab-panel active" data-tab-panel="evidence-list" data-tab-group="job">
+  <div class="card" style="width:100%;overflow:hidden;margin-bottom:20px">
+    <div class="card-header" style="background:var(--surface-2);display:flex;align-items:center;justify-content:space-between">
+      <div class="card-title" style="font-size:0.95rem;display:flex;align-items:center;gap:8px">
+        <?= svgIcon('image', 18) ?> Visual Gallery — Site Photos &amp; Test Results
+      </div>
+      <span class="badge badge-primary" style="font-size:0.75rem"><?= count($evidence) ?> Items</span>
+    </div>
+    <div class="card-body" style="padding:16px">
+      <?= renderEvidenceGallery($evidence, [
+        'can_delete'    => $canModifyEvidence,
+        'order_id'      => $assignment['order_id'],
+        'assignment_id' => $assignment['id'],
+        'show_empty'    => true,
+        'redirect_to'   => APP_URL . '/?page=contractor&action=job&id=' . $assignment['id']
+      ]) ?>
+    </div>
+  </div>
+
   <div class="card" style="width:100%;overflow:hidden">
+    <div class="card-header" style="background:var(--surface-2)">
+      <div class="card-title" style="font-size:0.92rem">Evidence Table &amp; Log</div>
+    </div>
     <div class="table-responsive" style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table class="data-table evidence-table" style="width:100%;min-width:680px;border-collapse:collapse;table-layout:fixed">
         <thead>
@@ -473,14 +575,15 @@ document.addEventListener('DOMContentLoaded', function() {
             <td style="padding:12px 16px;vertical-align:middle;text-align:left">
               <span class="badge badge-secondary" style="font-size:.8rem;padding:6px 10px;white-space:nowrap;display:inline-block"><?= e($ev['evidence_type']) ?></span>
             </td>
-            <td style="padding:12px 16px;vertical-align:middle;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="<?= e($ev['notes'] ?: ($ev['serial_number'] ?: '—')) ?>">
+            <td style="padding:12px 16px;vertical-align:middle;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="<?= e($ev['notes'] ?: ($ev['serial_number'] ?: ($ev['pickup_location'] ?: '—'))) ?>">
+              <?php if (!empty($ev['pickup_location'])): ?>
+                <span style="font-size:0.75rem;color:var(--primary);font-weight:600;margin-right:6px">📍 <?= e($ev['pickup_location']) ?></span>
+              <?php endif; ?>
               <?= e($ev['notes'] ?: ($ev['serial_number'] ?: '—')) ?>
             </td>
             <td style="padding:12px 16px;vertical-align:middle;text-align:center;white-space:nowrap">
               <?php if ($ev['file_path']): ?>
-              <a href="<?= APP_URL ?>/?page=contractor&action=download_evidence&id=<?= $ev['id'] ?>" class="btn btn-sm btn-secondary" style="padding:4px 10px;display:inline-flex;align-items:center;gap:4px">
-                <?= svgIcon('download') ?> Download
-              </a>
+              <?= renderFileActions(['file_url' => $ev['file_path'], 'file_name' => $ev['file_name'] ?: $ev['evidence_type'], 'download_url' => APP_URL . '/?page=download&table=contractor_evidence&id=' . $ev['id']]) ?>
               <?php else: ?>
               —
               <?php endif; ?>
@@ -570,29 +673,34 @@ function openEvidenceFilesModal(data) {
   } else {
     data.files.forEach((file, index) => {
       const isLatest = (index === 0);
-      const ext = file.file_name ? file.file_name.split('.').pop().toLowerCase() : '';
-      const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+      const rawPath = file.file_path || '';
+      const extFromPath = rawPath ? rawPath.split('?')[0].split('.').pop().toLowerCase() : '';
+      const extFromName = file.file_name ? file.file_name.split('?')[0].split('.').pop().toLowerCase() : '';
+      const ext = (['jpg','jpeg','png','gif','webp','svg','bmp','heic','jfif','pdf','docx','doc','xlsx','xls'].includes(extFromPath) ? extFromPath : extFromName) || extFromPath || extFromName;
+      const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'heic', 'jfif'].includes(ext);
       const isPdf = (ext === 'pdf');
-      const fileUrl = APP_URL + '/' + (file.file_path || '').replace(/^\/+/, '');
+      const fileUrl = rawPath ? (rawPath.startsWith('http') ? rawPath : (APP_URL + '/' + rawPath.replace(/^\/+/, ''))) : '';
+      const downloadUrl = APP_URL + '/?page=download&table=contractor_evidence&id=' + file.id;
 
       const card = document.createElement('div');
       card.style.cssText = 'background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:18px;margin-bottom:16px;position:relative;';
 
       let previewHtml = '';
-      if (isImg) {
-        previewHtml = `<div style="text-align:center;margin-bottom:14px;background:#000;border-radius:8px;padding:8px;max-height:300px;overflow:hidden">
-          <img src="${fileUrl}" alt="${file.file_name}" style="max-height:280px;max-width:100%;object-fit:contain;border-radius:4px">
+      if (isImg && fileUrl) {
+        previewHtml = `<div style="text-align:center;margin-bottom:14px;background:#0f172a;border-radius:8px;padding:12px;position:relative;cursor:pointer" onclick="viewSystemFile('${fileUrl}', '${(file.file_name || data.evidence_type).replace(/'/g, "\\'")}', '${downloadUrl}', {doc_type:'${data.evidence_type}'})">
+          <img src="${fileUrl}" alt="${file.file_name || data.evidence_type}" style="max-height:360px;max-width:100%;object-fit:contain;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3)">
+          <div style="position:absolute;bottom:10px;right:14px;background:rgba(0,0,0,0.75);color:#fff;font-size:0.75rem;padding:4px 10px;border-radius:4px;display:flex;align-items:center;gap:6px">🔍 Click for Full View / Zoom</div>
         </div>`;
-      } else if (isPdf) {
+      } else if (isPdf && fileUrl) {
         previewHtml = `<div style="margin-bottom:14px">
           <iframe src="${fileUrl}" style="width:100%;height:320px;border:1px solid var(--border);border-radius:8px"></iframe>
         </div>`;
-      } else {
-        previewHtml = `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface-1);border-radius:8px;margin-bottom:14px">
+      } else if (fileUrl) {
+        previewHtml = `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface-1);border-radius:8px;margin-bottom:14px;cursor:pointer" onclick="viewSystemFile('${fileUrl}', '${(file.file_name || data.evidence_type).replace(/'/g, "\\'")}', '${downloadUrl}', {doc_type:'${data.evidence_type}'})">
           <div style="font-size:2rem">📄</div>
           <div>
             <div style="font-weight:700;font-size:0.95rem;color:var(--text-primary)">${file.file_name || 'Uploaded Document'}</div>
-            <div style="font-size:0.8rem;color:var(--text-muted)">Direct browser preview unavailable for .${ext} files. Click Download to save file directly.</div>
+            <div style="font-size:0.8rem;color:var(--text-muted)">Click to preview document in modal viewer.</div>
           </div>
         </div>`;
       }
@@ -602,10 +710,10 @@ function openEvidenceFilesModal(data) {
       card.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-weight:700;font-size:0.95rem;color:var(--text-primary)">${file.file_name || 'Evidence File #' + file.id}</span>
+            <span style="font-weight:700;font-size:0.95rem;color:var(--text-primary)">${file.file_name || data.evidence_type + ' (#' + file.id + ')'}</span>
             ${isLatest ? '<span class="badge badge-success" style="font-size:0.7rem">★ Current / Latest File</span>' : '<span class="badge badge-secondary" style="font-size:0.7rem">Previous Version</span>'}
           </div>
-          <span class="badge badge-outline" style="font-size:0.72rem">${ext.toUpperCase()}</span>
+          <span class="badge badge-outline" style="font-size:0.72rem">${(ext || 'FILE').toUpperCase()}</span>
         </div>
 
         ${previewHtml}
@@ -619,9 +727,10 @@ function openEvidenceFilesModal(data) {
         </div>
 
         <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
-          <a href="${APP_URL}/?page=contractor&action=download_evidence&id=${file.id}" class="btn btn-sm btn-primary" style="text-decoration:none">
+          <a href="${downloadUrl}" class="btn btn-sm btn-primary" style="text-decoration:none">
             <?= svgIcon('download', 14) ?> Download
           </a>
+          ${data.can_modify ? `
           <button type="button" class="btn btn-sm btn-secondary" onclick="toggleInlineReplaceForm(${file.id})">
             <?= svgIcon('edit', 14) ?> Replace File
           </button>
@@ -631,8 +740,10 @@ function openEvidenceFilesModal(data) {
             <input type="hidden" name="assignment_id" value="${data.assignment_id}">
             <button type="submit" class="btn btn-sm btn-danger"><?= svgIcon('trash', 14) ?> Delete</button>
           </form>
+          ` : ''}
         </div>
 
+        ${data.can_modify ? `
         <div id="replaceFormWrap_${file.id}" style="display:none;margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
           <form method="POST" action="${APP_URL}/?page=contractor&action=replace_evidence" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
@@ -661,6 +772,7 @@ function openEvidenceFilesModal(data) {
             </div>
           </form>
         </div>
+        ` : ''}
       `;
 
       body.appendChild(card);
@@ -685,4 +797,95 @@ function toggleInlineReplaceForm(fileId) {
     wrap.style.display = (wrap.style.display === 'none' || !wrap.style.display) ? 'block' : 'none';
   }
 }
+
+function handleEvidenceTypeChange(val) {
+  const serialCol = document.getElementById('serialNumberCol');
+  const costCol = document.getElementById('costAmountCol');
+  const fileCol = document.getElementById('fileCol');
+  const isSerial = (val === 'Serial Number' || val === 'ONT/ONU Serial');
+  const isCost = (val === 'Additional Cost Form');
+  if (serialCol) serialCol.style.display = isSerial ? 'block' : 'none';
+  if (costCol) costCol.style.display = isCost ? 'block' : 'none';
+  if (fileCol) {
+    fileCol.className = (isSerial || isCost) ? 'col-md-4' : 'col-md-8';
+  }
+}
+
+function selectAndScrollToEvidence(evType) {
+  const sel = document.getElementById('evidence_type_select');
+  if (sel) {
+    // Find matching option
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value.toLowerCase().trim() === evType.toLowerCase().trim() ||
+          sel.options[i].text.toLowerCase().includes(evType.toLowerCase().trim())) {
+        sel.selectedIndex = i;
+        handleEvidenceTypeChange(sel.options[i].value);
+        break;
+      }
+    }
+  }
+  const uploadCard = document.getElementById('uploadEvidenceCard');
+  if (uploadCard) {
+    uploadCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    uploadCard.style.outline = '3px solid var(--primary)';
+    setTimeout(() => { uploadCard.style.outline = 'none'; }, 2000);
+  }
+}
+
+function triggerReplaceForEvidence(evType) {
+  selectAndScrollToEvidence(evType);
+}
 </script>
+
+<!-- Upload Additional Cost Form Modal -->
+<div class="modal-backdrop" id="additionalCostModal">
+  <div class="modal" style="max-width:560px;width:95%">
+    <div class="modal-header">
+      <div class="modal-title" style="display:flex;align-items:center;gap:8px">
+        <span>📄</span> Upload Additional Cost Form
+      </div>
+      <button type="button" class="modal-close" data-modal-close>&times;</button>
+    </div>
+    <form method="POST" action="<?= APP_URL ?>/?page=contractor&action=upload_evidence" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
+      <input type="hidden" name="assignment_id" value="<?= $assignment['id'] ?>">
+      <input type="hidden" name="order_id" value="<?= $assignment['order_id'] ?>">
+      <input type="hidden" name="evidence_type" value="Additional Cost Form">
+      <div class="modal-body">
+        <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:16px">
+          If unforeseen site challenges or extra materials/civil works occurred, upload the signed Additional Cost Form or proof of expenditure for Project Manager review.
+        </p>
+
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label" style="font-weight:600">Additional Cost Amount (USD / $) <span class="text-danger">*</span></label>
+          <div style="position:relative">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--text-secondary)">$</span>
+            <input type="number" step="0.01" min="0" name="cost_amount" class="form-control" style="padding-left:26px" placeholder="0.00" required>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label" style="font-weight:600">Description &amp; Justification <span class="text-danger">*</span></label>
+          <textarea name="notes" class="form-control" rows="3" placeholder="Explain what required additional cost (e.g. Extra 150m fiber drop cable, pole clamps, wall drilling)..." required></textarea>
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label" style="font-weight:600">Upload Form / Receipt / Document <span class="text-danger">*</span></label>
+          <input type="file" name="evidence_files[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" required multiple>
+          <div class="font-sm text-muted" style="margin-top:4px">PDF, Images, or Office documents supported</div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Pickup / Site Location <span class="text-muted font-sm font-normal">(optional)</span></label>
+          <input type="text" name="pickup_location" class="form-control" value="<?= e($assignment['pickup_location'] ?? '') ?>" placeholder="e.g. Site Building, Room #">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-warning">
+          <?= svgIcon('upload') ?> Submit Additional Cost Form
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

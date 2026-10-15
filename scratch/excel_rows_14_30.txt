@@ -1,0 +1,16 @@
+Row 14: Col2(B): 'SERVICE REQUEST' | Col8(H): 'SITE DETAILS'
+Row 15: Col2(B): 'Bandwidth' | Col8(H): 'NNI Port Size (1G, 10G, 40G)'
+Row 16: Col2(B): 'Service Type' | Col3(C): 'DIA' | Col4(D): '✔' | Col8(H): 'A-End Site GPS Cordiantes' | Col9(I): 'Dar Es Salaam '
+Row 17: Col8(H): 'A-End Street name & City' | Col9(I): 'Mikocheni A Senga Road'
+Row 18: 
+Row 19: Col8(H): 'B-End Site GPS Cordiantes'
+Row 20: Col2(B): 'Initial Remote hands required' | Col3(C): 'YES                               ' | Col8(H): 'B-end Street name & City'
+Row 21: Col2(B): 'New Cross Connect Requred' | Col3(C): 'YES                               ' | Col8(H): "Savanna's tool Feasibility" | Col9(I): 'Feasible  ' | Col11(K): ' Not-Feasible'
+Row 22: 
+Row 23: Col2(B): 'COMMERCIAL'
+Row 24: Col2(B): 'Billing Cycle' | Col3(C): 'MONTHLY' | Col4(D): '✔' | Col8(H): ' Currency of Payment' | Col9(I): 'TZS' | Col10(J): '✔' | Col11(K): 'USD'
+Row 25: Col2(B): 'Minimum Term (Months)' | Col3(C): 12 | Col8(H): 'USD to TZ rate' | Col9(I): 2700
+Row 26: Col2(B): 'Monthly Charges ' | Col3(C): 262.96 | Col8(H): 'Set-Up Charges ' | Col9(I): 0
+Row 27: Col2(B): 'VAT 18%' | Col3(C): 47.33279999999999 | Col8(H): 'VAT 18%' | Col9(I): 0
+Row 28: Col2(B): 'Total MRC Charge' | Col3(C): 310.29279999999994 | Col8(H): 'Total NRC Charge' | Col9(I): 0
+Row 29: 

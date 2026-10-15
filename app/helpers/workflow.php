@@ -98,10 +98,12 @@ function evaluateAndSyncOrderStatus(int $orderId, string $triggerAction = ''): a
         if (stripos($rawSvc, 'BIA') !== false || stripos($rawSvc, 'Broadband') !== false) { $svcTypes[] = 'BIA (Broadband Internet Access)'; $svcTypes[] = 'BIA'; $svcTypes[] = 'FTTH'; }
         if (stripos($rawSvc, 'Layer 2') !== false || stripos($rawSvc, 'Layer2') !== false || stripos($rawSvc, 'Ethernet') !== false) { $svcTypes[] = 'Layer 2 ( last mile)'; $svcTypes[] = 'Dedicated Layer 2'; $svcTypes[] = 'Layer 2 (last mile)'; }
         if (stripos($rawSvc, 'Remote Hands') !== false) { $svcTypes[] = 'Remote Hands Only'; $svcTypes[] = 'Remote Hands'; }
+        if (stripos($rawSvc, 'Dark') !== false || stripos($rawSvc, 'DF') !== false) { $svcTypes[] = 'Dark Fiber'; $svcTypes[] = 'Dark Fibre'; $svcTypes[] = 'DF'; $svcTypes[] = 'Other'; }
+        $svcTypes[] = 'Other';
     }
     $svcTypes = array_values(array_unique(array_filter($svcTypes)));
     if (empty($svcTypes)) {
-        $svcTypes = ['FTTH'];
+        $svcTypes = ['FTTH', 'Other'];
     }
 
     $placeholders = implode(',', array_fill(0, count($svcTypes), '?'));
@@ -153,12 +155,12 @@ function evaluateAndSyncOrderStatus(int $orderId, string $triggerAction = ''): a
     $allMandatoryComplete = ($totalMandatory > 0 && $completedMandatory === $totalMandatory);
     $hasMissingMandatory  = ($totalMandatory > 0 && $completedMandatory < $totalMandatory);
 
-    // 2. Automated Workflow Transitions
-    // Rule A: If all required evidence is uploaded and status is in installation lifecycle -> Transition to 'Testing'
-    if ($allMandatoryComplete && in_array($currentStatus, ['Installation', 'Assigned', 'Evidence Pending', 'Pending Evidence', 'Job Completed'])) {
+    // 2. Workflow Transitions
+    // Order changes from "Installation" to "Testing" ONLY after the contractor has uploaded all mandatory evidence AND submitted job completion
+    if ($triggerAction === 'submit_completion' && $allMandatoryComplete && in_array($currentStatus, ['Installation', 'Assigned', 'Evidence Pending', 'Pending Evidence', 'Job Completed'])) {
         $newStatus = 'Testing';
     }
-    // Rule B: If mandatory evidence is deleted/missing and status was 'Testing' -> Revert to 'Installation'
+    // If mandatory evidence is missing/deleted while in Testing (and not actively approving/completing) -> Revert to Installation
     elseif ($hasMissingMandatory && $currentStatus === 'Testing' && !in_array($triggerAction, ['submit_completion', 'approve_testing'])) {
         $newStatus = 'Installation';
     }
@@ -350,3 +352,326 @@ function getAuthoritativePartnerKyc(PDO $db, int $partnerId): ?array {
         'raw'                    => $kyc
     ];
 }
+
+/**
+ * Ensure database schema for Survey Management, Designated Field Teams, and Installation tracking.
+ */
+function ensureSurveysSchema(PDO $db): void {
+    static $ensured = false;
+    if ($ensured) return;
+
+    try {
+        // 1. Ensure contractor_teams
+        $db->exec("CREATE TABLE IF NOT EXISTS `contractor_teams` (
+            `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+            `contractor_partner_id` int UNSIGNED NOT NULL,
+            `team_name` varchar(150) NOT NULL,
+            `leader_name` varchar(150) DEFAULT NULL,
+            `leader_phone` varchar(50) DEFAULT NULL,
+            `coverage_region` varchar(150) DEFAULT NULL,
+            `status` varchar(50) NOT NULL DEFAULT 'Approved',
+            `created_by` int UNSIGNED DEFAULT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            `approved_by` int UNSIGNED DEFAULT NULL,
+            `approved_at` datetime DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `idx_contractor` (`contractor_partner_id`),
+            KEY `idx_status` (`status`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // 2. Ensure contractor_technicians
+        $db->exec("CREATE TABLE IF NOT EXISTS `contractor_technicians` (
+            `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+            `contractor_partner_id` int UNSIGNED NOT NULL,
+            `team_id` int UNSIGNED DEFAULT NULL,
+            `full_name` varchar(200) NOT NULL,
+            `nida_number` varchar(100) NOT NULL,
+            `gender` enum('Male','Female') DEFAULT 'Male',
+            `phone` varchar(50) NOT NULL,
+            `email` varchar(200) DEFAULT NULL,
+            `photo_path` varchar(500) DEFAULT NULL,
+            `nida_photo_path` varchar(500) DEFAULT NULL,
+            `skill_level` varchar(100) DEFAULT 'Technician',
+            `status` varchar(50) NOT NULL DEFAULT 'Approved',
+            `rejection_reason` text DEFAULT NULL,
+            `created_by` int UNSIGNED DEFAULT NULL,
+            `approved_by` int UNSIGNED DEFAULT NULL,
+            `approved_at` datetime DEFAULT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `idx_team` (`team_id`),
+            KEY `idx_contractor` (`contractor_partner_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // 3. Ensure survey_tasks
+        $db->exec("CREATE TABLE IF NOT EXISTS `survey_tasks` (
+            `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+            `survey_number` varchar(50) NOT NULL UNIQUE,
+            `order_id` int UNSIGNED DEFAULT NULL,
+            `customer_name` varchar(200) NOT NULL,
+            `customer_contact_name` varchar(200) DEFAULT NULL,
+            `customer_contact_phone` varchar(50) DEFAULT NULL,
+            `customer_contact_email` varchar(200) DEFAULT NULL,
+            `service_type` varchar(100) NOT NULL DEFAULT 'FTTH',
+            `site_location` varchar(255) NOT NULL,
+            `building_name` varchar(200) DEFAULT NULL,
+            `floor_number` varchar(50) DEFAULT NULL,
+            `apartment_number` varchar(50) DEFAULT NULL,
+            `city_region` varchar(100) DEFAULT NULL,
+            `gps_coordinates` varchar(100) DEFAULT NULL,
+            `contractor_partner_id` int UNSIGNED NOT NULL,
+            `contractor_team_id` int UNSIGNED NOT NULL,
+            `assigned_by` int UNSIGNED NOT NULL,
+            `assigned_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            `target_date` date DEFAULT NULL,
+            `priority` enum('Low','Medium','High','Urgent') NOT NULL DEFAULT 'Medium',
+            `scope_notes` text DEFAULT NULL,
+            `status` enum('Assigned','Accepted','In Progress','Completed','Approved','Rejected','Cancelled') NOT NULL DEFAULT 'Assigned',
+            `accepted_by` int UNSIGNED DEFAULT NULL,
+            `accepted_at` datetime DEFAULT NULL,
+            `survey_date` date DEFAULT NULL,
+            `completed_by` int UNSIGNED DEFAULT NULL,
+            `completed_at` datetime DEFAULT NULL,
+            `feasibility_result` enum('Feasible','Feasible with Extension/Civils','Not Feasible') DEFAULT NULL,
+            `fiber_distance_meters` decimal(10,2) DEFAULT NULL,
+            `nearest_dp_or_splitter` varchar(150) DEFAULT NULL,
+            `cable_route_type` enum('Aerial','Underground','Hybrid') DEFAULT NULL,
+            `civil_works_required` tinyint(1) NOT NULL DEFAULT '0',
+            `civil_works_details` text DEFAULT NULL,
+            `power_available` varchar(50) DEFAULT NULL,
+            `building_access_status` varchar(100) DEFAULT NULL,
+            `surveyor_notes` text DEFAULT NULL,
+            `reviewed_by` int UNSIGNED DEFAULT NULL,
+            `reviewed_at` datetime DEFAULT NULL,
+            `pm_review_remarks` text DEFAULT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `idx_survey_number` (`survey_number`),
+            KEY `idx_order` (`order_id`),
+            KEY `idx_team` (`contractor_team_id`),
+            KEY `idx_contractor` (`contractor_partner_id`),
+            KEY `idx_status` (`status`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // 4. Ensure survey_evidence
+        $db->exec("CREATE TABLE IF NOT EXISTS `survey_evidence` (
+            `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+            `survey_id` int UNSIGNED NOT NULL,
+            `file_type` varchar(100) NOT NULL,
+            `file_name` varchar(255) NOT NULL,
+            `file_path` varchar(500) NOT NULL,
+            `file_size` int UNSIGNED DEFAULT NULL,
+            `notes` text DEFAULT NULL,
+            `uploaded_by` int UNSIGNED NOT NULL,
+            `uploaded_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `idx_survey` (`survey_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // 5. Ensure survey_timeline
+        $db->exec("CREATE TABLE IF NOT EXISTS `survey_timeline` (
+            `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+            `survey_id` int UNSIGNED NOT NULL,
+            `status` varchar(100) NOT NULL,
+            `note` text NOT NULL,
+            `changed_by` int UNSIGNED NOT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `idx_survey_time` (`survey_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // 6. Ensure team columns on contractor_assignments
+        $caCols = $db->query("SHOW COLUMNS FROM contractor_assignments")->fetchAll(PDO::FETCH_COLUMN);
+        if (!in_array('contractor_team_id', $caCols)) {
+            $db->exec("ALTER TABLE contractor_assignments ADD COLUMN contractor_team_id INT UNSIGNED NULL");
+        }
+        if (!in_array('contractor_team_name', $caCols)) {
+            $db->exec("ALTER TABLE contractor_assignments ADD COLUMN contractor_team_name VARCHAR(150) NULL");
+        }
+        if (!in_array('pickup_location', $caCols)) {
+            $db->exec("ALTER TABLE contractor_assignments ADD COLUMN pickup_location VARCHAR(255) NULL");
+        }
+
+        // 7. Ensure team columns on orders
+        $ordCols = $db->query("SHOW COLUMNS FROM orders")->fetchAll(PDO::FETCH_COLUMN);
+        if (!in_array('contractor_team_id', $ordCols)) {
+            $db->exec("ALTER TABLE orders ADD COLUMN contractor_team_id INT UNSIGNED NULL");
+        }
+        if (!in_array('contractor_team_name', $ordCols)) {
+            $db->exec("ALTER TABLE orders ADD COLUMN contractor_team_name VARCHAR(150) NULL");
+        }
+        if (!in_array('installation_date', $ordCols)) {
+            $db->exec("ALTER TABLE orders ADD COLUMN installation_date DATE NULL");
+        }
+
+        // 8. Auto-seed default approved teams if none exist
+        $teamCount = (int)$db->query("SELECT COUNT(*) FROM contractor_teams")->fetchColumn();
+        if ($teamCount === 0) {
+            $contractorPartnerId = (int)$db->query("SELECT id FROM partners WHERE kyc_type = 'Contractor' OR partner_type = 'Contractor' LIMIT 1")->fetchColumn();
+            if (!$contractorPartnerId) {
+                // Create a default contractor organization if missing
+                $db->exec("INSERT INTO partners (name, trading_name, partner_type, kyc_type, status, city_region, country, created_at)
+                    VALUES ('Fiber Works Ltd', 'FiberWorks', 'Contractor', 'Contractor', 'Active', 'Dar es Salaam', 'Tanzania', NOW())");
+                $contractorPartnerId = (int)$db->lastInsertId();
+            }
+
+            $adminId = (int)($db->query("SELECT id FROM users WHERE role IN ('System Admin', 'Admin', 'Project Manager') LIMIT 1")->fetchColumn() ?: 1);
+
+            $teamsToCreate = [
+                [
+                    'name'   => 'Alpha Field Squad (Dar Central)',
+                    'leader' => 'Juma Bakari',
+                    'phone'  => '+255 711 223 344',
+                    'region' => 'Ilala / CBD / Posta'
+                ],
+                [
+                    'name'   => 'Coastal Fiber Crew (Kinondoni)',
+                    'leader' => 'Hamisi Rajabu',
+                    'phone'  => '+255 754 889 911',
+                    'region' => 'Kinondoni / Mikocheni / Masaki'
+                ],
+                [
+                    'name'   => 'Apex FastTrack Splicers',
+                    'leader' => 'Baraka Mwenda',
+                    'phone'  => '+255 788 334 455',
+                    'region' => 'Ubungo / Mwenge / Sinza'
+                ]
+            ];
+
+            foreach ($teamsToCreate as $t) {
+                $db->prepare("INSERT INTO contractor_teams (contractor_partner_id, team_name, leader_name, leader_phone, coverage_region, status, created_by, approved_by, approved_at, created_at)
+                    VALUES (?, ?, ?, ?, ?, 'Approved', ?, ?, NOW(), NOW())")
+                   ->execute([$contractorPartnerId, $t['name'], $t['leader'], $t['phone'], $t['region'], $adminId, $adminId]);
+                $newTeamId = (int)$db->lastInsertId();
+
+                // Add technicians
+                $db->prepare("INSERT INTO contractor_technicians (contractor_partner_id, team_id, full_name, nida_number, gender, phone, skill_level, status, created_by, created_at)
+                    VALUES (?, ?, ?, ?, 'Male', ?, 'Senior Technician', 'Approved', ?, NOW())")
+                   ->execute([$contractorPartnerId, $newTeamId, $t['leader'], '19900101-12345-0000' . $newTeamId, $t['phone'], $adminId]);
+                $db->prepare("INSERT INTO contractor_technicians (contractor_partner_id, team_id, full_name, nida_number, gender, phone, skill_level, status, created_by, created_at)
+                    VALUES (?, ?, ?, ?, 'Male', ?, 'Fiber Splicer', 'Approved', ?, NOW())")
+                   ->execute([$contractorPartnerId, $newTeamId, 'Kelvin S. Mushi', '19940512-54321-0000' . $newTeamId, '+255 712 998 87' . $newTeamId, $adminId]);
+            }
+        }
+
+        // 9. Auto-seed sample surveys if table is empty
+        $surveyCount = (int)$db->query("SELECT COUNT(*) FROM survey_tasks")->fetchColumn();
+        if ($surveyCount === 0) {
+            $pmUserId = (int)($db->query("SELECT id FROM users WHERE role = 'Project Manager' LIMIT 1")->fetchColumn() ?: 11);
+            $teams = $db->query("SELECT id, contractor_partner_id, team_name FROM contractor_teams ORDER BY id ASC LIMIT 3")->fetchAll(PDO::FETCH_ASSOC);
+
+            if (!empty($teams)) {
+                $team1 = $teams[0];
+                $team2 = $teams[1] ?? $teams[0];
+                $team3 = $teams[2] ?? $teams[0];
+
+                // Survey 1: Completed & Feasible
+                $db->prepare("INSERT INTO survey_tasks (
+                    survey_number, order_id, customer_name, customer_contact_name, customer_contact_phone,
+                    service_type, site_location, building_name, city_region, gps_coordinates,
+                    contractor_partner_id, contractor_team_id, assigned_by, assigned_at, target_date,
+                    priority, scope_notes, status, accepted_by, accepted_at, survey_date, completed_by, completed_at,
+                    feasibility_result, fiber_distance_meters, nearest_dp_or_splitter, cable_route_type,
+                    civil_works_required, civil_works_details, power_available, building_access_status, surveyor_notes,
+                    reviewed_by, reviewed_at, pm_review_remarks, created_at
+                ) VALUES (
+                    'SRV-261015-001', 1, 'Twiga Cement Corporate HQ', 'Emmanuel Mushi', '+255 754 112 233',
+                    'Dedicated Layer 2', 'Bagamoyo Road, Tegeta Wazo', 'Twiga Industrial Complex Block B', 'Dar es Salaam', '-6.6632, 39.1620',
+                    ?, ?, ?, DATE_SUB(NOW(), INTERVAL 5 DAY), DATE_SUB(NOW(), INTERVAL 3 DAY),
+                    'High', 'Verify route clearance from main DP-04 to server room. Note rack space and power feed availability.',
+                    'Approved', ?, DATE_SUB(NOW(), INTERVAL 5 DAY), DATE_SUB(NOW(), INTERVAL 4 DAY), ?, DATE_SUB(NOW(), INTERVAL 4 DAY),
+                    'Feasible', 145.50, 'DP-TEGETA-04 (Port 3 Available)', 'Aerial',
+                    0, 'No heavy civil works needed. Pre-existing cable tray from pole to server room is in good order.',
+                    'AC 220V + UPS backup', 'Easy Access (Security gate sign-in only)', 'Client IT manager provided server room access. Signal path tested clean with OTDR. Fiber patch panel has 4 free duplex ports.',
+                    ?, DATE_SUB(NOW(), INTERVAL 3 DAY), 'Site survey confirmed feasible per Neilos network standards. Technical scope approved.', DATE_SUB(NOW(), INTERVAL 5 DAY)
+                )")->execute([$team1['contractor_partner_id'], $team1['id'], $pmUserId, $pmUserId, $pmUserId, $pmUserId]);
+
+                $s1Id = (int)$db->lastInsertId();
+                $db->prepare("INSERT INTO survey_timeline (survey_id, status, note, changed_by, created_at) VALUES
+                    (?, 'Assigned', 'Survey task assigned to team " . addslashes($team1['team_name']) . " by Project Manager.', ?, DATE_SUB(NOW(), INTERVAL 5 DAY)),
+                    (?, 'Accepted', 'Survey accepted by team leader.', ?, DATE_SUB(NOW(), INTERVAL 5 DAY)),
+                    (?, 'In Progress', 'Team dispatched to site for physical survey and route tracing.', ?, DATE_SUB(NOW(), INTERVAL 4 DAY)),
+                    (?, 'Completed', 'Survey findings and route report submitted by surveyor.', ?, DATE_SUB(NOW(), INTERVAL 4 DAY)),
+                    (?, 'Approved', 'Project Manager reviewed and approved site survey feasibility report.', ?, DATE_SUB(NOW(), INTERVAL 3 DAY))
+                ")->execute([$s1Id, $pmUserId, $s1Id, $pmUserId, $s1Id, $pmUserId, $s1Id, $pmUserId, $s1Id, $pmUserId]);
+
+                // Survey 2: In Progress
+                $db->prepare("INSERT INTO survey_tasks (
+                    survey_number, order_id, customer_name, customer_contact_name, customer_contact_phone,
+                    service_type, site_location, building_name, city_region, gps_coordinates,
+                    contractor_partner_id, contractor_team_id, assigned_by, assigned_at, target_date,
+                    priority, scope_notes, status, accepted_by, accepted_at, created_at
+                ) VALUES (
+                    'SRV-261015-002', NULL, 'Kilimanjaro Logistics Hub', 'Salim Said', '+255 784 990 011',
+                    'DIA (Dedicated Internet Access)', 'Nyerere Road, Industrial Area Plot 42', 'Kilimanjaro Logistics Main Depot', 'Dar es Salaam', '-6.8521, 39.2415',
+                    ?, ?, ?, DATE_SUB(NOW(), INTERVAL 1 DAY), DATE_ADD(CURDATE(), INTERVAL 1 DAY),
+                    'Urgent', 'Conduct detailed site survey for DIA 50Mbps. Check trenching requirements across the entry gate tarmac.',
+                    'In Progress', ?, DATE_SUB(NOW(), INTERVAL 1 DAY), DATE_SUB(NOW(), INTERVAL 1 DAY)
+                )")->execute([$team2['contractor_partner_id'], $team2['id'], $pmUserId, $pmUserId]);
+
+                $s2Id = (int)$db->lastInsertId();
+                $db->prepare("INSERT INTO survey_timeline (survey_id, status, note, changed_by, created_at) VALUES
+                    (?, 'Assigned', 'Survey task assigned to team " . addslashes($team2['team_name']) . " by Project Manager.', ?, DATE_SUB(NOW(), INTERVAL 1 DAY)),
+                    (?, 'Accepted', 'Team accepted task.', ?, DATE_SUB(NOW(), INTERVAL 1 DAY)),
+                    (?, 'In Progress', 'Surveyors on site verifying ODF location and trenching route.', ?, NOW())
+                ")->execute([$s2Id, $pmUserId, $s2Id, $pmUserId, $s2Id, $pmUserId]);
+
+                // Survey 3: Newly Assigned
+                $db->prepare("INSERT INTO survey_tasks (
+                    survey_number, order_id, customer_name, customer_contact_name, customer_contact_phone,
+                    service_type, site_location, building_name, city_region, gps_coordinates,
+                    contractor_partner_id, contractor_team_id, assigned_by, assigned_at, target_date,
+                    priority, scope_notes, status, created_at
+                ) VALUES (
+                    'SRV-261015-003', NULL, 'Victoria Medical Plaza', 'Dr. Grace Mrema', '+255 713 445 566',
+                    'FTTB', 'New Bagamoyo Road, Victoria', 'Victoria Medical Plaza 4th Floor', 'Dar es Salaam', '-6.7790, 39.2530',
+                    ?, ?, ?, NOW(), DATE_ADD(CURDATE(), INTERVAL 2 DAY),
+                    'Medium', 'Inspect MDU riser and vertical cabling ducts. Determine floor distribution box placement.',
+                    'Assigned', NOW()
+                )")->execute([$team3['contractor_partner_id'], $team3['id'], $pmUserId]);
+
+                $s3Id = (int)$db->lastInsertId();
+                $db->prepare("INSERT INTO survey_timeline (survey_id, status, note, changed_by, created_at) VALUES
+                    (?, 'Assigned', 'Survey task assigned to team " . addslashes($team3['team_name']) . " by Project Manager.', ?, NOW())
+                ")->execute([$s3Id, $pmUserId]);
+
+                // Survey 4: Completed with Extension / Civils
+                $db->prepare("INSERT INTO survey_tasks (
+                    survey_number, order_id, customer_name, customer_contact_name, customer_contact_phone,
+                    service_type, site_location, building_name, city_region, gps_coordinates,
+                    contractor_partner_id, contractor_team_id, assigned_by, assigned_at, target_date,
+                    priority, scope_notes, status, accepted_by, accepted_at, survey_date, completed_by, completed_at,
+                    feasibility_result, fiber_distance_meters, nearest_dp_or_splitter, cable_route_type,
+                    civil_works_required, civil_works_details, power_available, building_access_status, surveyor_notes,
+                    reviewed_by, reviewed_at, pm_review_remarks, created_at
+                ) VALUES (
+                    'SRV-261015-004', NULL, 'Savanna Microfinance HQ', 'Peter Temu', '+255 767 889 900',
+                    'FTTH', 'Sam Nujoma Road, Mwenge', 'Savanna Commercial Centre Ground Floor', 'Dar es Salaam', '-6.7845, 39.2312',
+                    ?, ?, ?, DATE_SUB(NOW(), INTERVAL 7 DAY), DATE_SUB(NOW(), INTERVAL 5 DAY),
+                    'Medium', 'Perform feasibility assessment for FTTH last-mile termination.',
+                    'Completed', ?, DATE_SUB(NOW(), INTERVAL 7 DAY), DATE_SUB(NOW(), INTERVAL 6 DAY), ?, DATE_SUB(NOW(), INTERVAL 6 DAY),
+                    'Feasible with Extension/Civils', 280.00, 'DP-MWENGE-12 (Distance > 200m)', 'Hybrid',
+                    1, 'Requires 45m road cut and micro-trenching under tarmac driveway to reach building perimeter.',
+                    'AC 220V', 'Building permit required for trenching across front car park',
+                    'Signal at DP is strong (-17.2 dBm). 2 poles needed to avoid sag across driveway or road cut permit from municipal council.',
+                    NULL, NULL, NULL, DATE_SUB(NOW(), INTERVAL 7 DAY)
+                )")->execute([$team1['contractor_partner_id'], $team1['id'], $pmUserId, $pmUserId, $pmUserId]);
+            }
+        }
+
+        // 10. Update existing orders with contractor_team_id if missing
+        $sampleTeam = $db->query("SELECT id, team_name FROM contractor_teams LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if ($sampleTeam) {
+            $db->prepare("UPDATE orders SET contractor_team_id = ?, contractor_team_name = ?, installation_date = COALESCE(installation_date, CURDATE()) WHERE contractor_team_id IS NULL AND status IN ('Installation', 'Testing', 'UAT', 'Closed')")
+               ->execute([$sampleTeam['id'], $sampleTeam['team_name']]);
+            $db->prepare("UPDATE contractor_assignments SET contractor_team_id = ?, contractor_team_name = ? WHERE contractor_team_id IS NULL")
+               ->execute([$sampleTeam['id'], $sampleTeam['team_name']]);
+        }
+
+        $ensured = true;
+    } catch (Throwable $e) {
+        error_log("ensureSurveysSchema error: " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
+    }
+}
+

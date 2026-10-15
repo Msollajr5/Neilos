@@ -69,7 +69,35 @@
           <strong style="color:var(--primary)"><?= svgIcon('info', 16) ?> Default Password</strong>
           <div style="margin-top:4px;color:var(--text-secondary)">
             New users will be created with the default password <code style="background:var(--surface-1);padding:2px 6px;border-radius:4px">Chang3Me!</code>
-            and will be required to change it on first login.
+            and will automatically receive their credentials via email.
+          </div>
+        </div>
+      </div>
+      <?php else: ?>
+      <div class="card" style="margin-top:18px;background:var(--surface-2);border:1px solid var(--border)">
+        <div class="card-header" style="padding:10px 14px;font-size:.88rem;font-weight:700">
+          <?= svgIcon('key', 16) ?> Reset / Change Password (Optional)
+        </div>
+        <div class="card-body" style="padding:14px">
+          <div class="form-grid form-grid-2">
+            <div class="form-group" style="margin-bottom:10px">
+              <label for="new_password">Set New Password</label>
+              <input type="password" id="new_password" name="new_password" class="form-control" placeholder="Leave blank to keep current password" autocomplete="new-password">
+            </div>
+            <div class="form-group" style="margin-bottom:10px">
+              <label for="confirm_password">Confirm New Password</label>
+              <input type="password" id="confirm_password" name="confirm_password" class="form-control" placeholder="Confirm new password" autocomplete="new-password">
+            </div>
+          </div>
+          <div style="display:flex;gap:20px;margin-top:8px;font-size:.84rem;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" name="require_password_change" value="1">
+              <span>Require password change on next login</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" name="send_password_email" value="1" checked>
+              <span>Email updated password notice to user</span>
+            </label>
           </div>
         </div>
       </div>

@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-10-04_140001",
+  "success": true,
+  "database_file": "neilos_portal_2026-10-04_140001.sql.gz",
+  "database_size_bytes": 77920,
+  "code_file": null,
+  "code_size_bytes": 0,
+  "uploads_uploaded": 0,
+  "uploads_skipped": 0,
+  "duration_seconds": 0.69
+}

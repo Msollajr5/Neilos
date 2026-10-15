@@ -14,7 +14,7 @@
 <div class="login-page">
   <div class="login-card">
     <div class="login-logo">
-      <img src="<?= APP_URL ?>/assets/img/logo.png?v=2" alt="Neilos" class="login-logo-img">
+      <img src="<?= APP_URL ?>/assets/img/logo.png?v=4" alt="Neilos" class="login-logo-img">
       <div class="login-title">OTP Verification</div>
       <div class="login-subtitle">Enter the 6-digit code sent to your mobile number.</div>
     </div>

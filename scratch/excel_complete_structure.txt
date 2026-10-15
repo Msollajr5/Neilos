@@ -1,0 +1,271 @@
+Sheet Name: L2 SOF
+Max row: 82, Max col: 15
+
+--- ROW HEIGHTS ---
+Row  1: height = 12.5
+Row  2: height = 15.0
+Row  3: height = 39.0
+Row  4: height = 15.0
+Row  5: height = 15.0
+Row  6: height = 15.0
+Row  7: height = 15.0
+Row  8: height = 15.0
+Row  9: height = 15.0
+Row 10: height = 15.0
+Row 11: height = 15.0
+Row 12: height = 15.0
+Row 13: height = 6.5
+Row 14: height = 15.0
+Row 15: height = 15.0
+Row 16: height = 15.0
+Row 17: height = 15.0
+Row 18: height = 15.0
+Row 19: height = 15.0
+Row 20: height = 15.0
+Row 21: height = 15.0
+Row 22: height = 6.5
+Row 23: height = 12.5
+Row 24: height = 15.0
+Row 25: height = 15.0
+Row 26: height = 15.0
+Row 27: height = 15.0
+Row 28: height = 15.0
+Row 29: height = 14.0
+Row 30: height = 14.0
+Row 31: height = 15.0
+Row 32: height = 15.0
+Row 33: height = None
+Row 34: height = 15.0
+Row 35: height = 15.0
+Row 36: height = 15.0
+Row 37: height = 25.0
+Row 38: height = 15.0
+Row 39: height = 15.0
+Row 40: height = 15.0
+Row 41: height = 15.0
+Row 42: height = 17.0
+Row 43: height = 27.25
+Row 44: height = 15.0
+Row 45: height = 17.0
+Row 46: height = 18.0
+Row 47: height = 23.9
+Row 48: height = 19.25
+Row 49: height = 12.5
+Row 50: height = 12.5
+Row 51: height = None
+
+=== ROW 1 ===
+=== ROW 2 ===
+  [B2] val='SERVICE ORDER FORM (SOF) - SAVANNA BUSINESS ENTERPRISE\t\t\t\t\t\t\t' | fill=Values must be of type <class 'str'> | font=Calibri 16.0pt bold=True italic=False color=None | align=(center,center)
+  [K2] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(center,center)
+=== ROW 3 ===
+=== ROW 4 ===
+  [B4] val='CUSTOMER INFORMATION' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(left,center)
+  [H4] val='SAVANNA BIUSINESS ENTERPRISE INFORMATION' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [I4] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [J4] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+=== ROW 5 ===
+  [B5] val='Company  Name (KYC)' | fill=FFFF9900 | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H5] val='SOF Number' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [I5] val='Sav\\SOF\\0015' | fill=00000000 | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+=== ROW 6 ===
+  [B6] val='Technical contact Name ' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H6] val='Technical contact Name ' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [I6] val='Tony Koskei' | fill=00000000 | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+=== ROW 7 ===
+  [B7] val='Phone' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H7] val='Phone' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [I7] val=677050940 | fill=00000000 | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+=== ROW 8 ===
+  [B8] val='Email' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H8] val='Email' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [I8] val='tonny.koskei@savannafibre.co.tz' | fill=00000000 | font=Calibri 9.0pt bold=False italic=False color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 9 ===
+  [B9] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(center,center)
+=== ROW 10 ===
+  [B10] val='Billing contact Name' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H10] val='Billing contact Name' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+=== ROW 11 ===
+  [B11] val='Phone' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H11] val='Phone' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+=== ROW 12 ===
+  [B12] val='Email' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H12] val='Email' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [I12] val=' financetz@savannafibre.co.tz' | fill=00000000 | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+=== ROW 13 ===
+  [B13] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(center,center)
+=== ROW 14 ===
+  [B14] val='SERVICE REQUEST' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(left,center)
+  [H14] val='SITE DETAILS' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(left,center)
+  [I14] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(center,center)
+=== ROW 15 ===
+  [B15] val='Bandwidth' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [H15] val='NNI Port Size (1G, 10G, 40G)' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+=== ROW 16 ===
+  [B16] val='Service Type' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [C16] val='DIA' | fill=00000000 | font=Calibri 9.0pt bold=False italic=False color=None | align=(left,None)
+  [D16] val='✔' | fill=00000000 | font=Arial 8.0pt bold=True italic=False color=FF000000 | align=(None,None)
+  [H16] val='A-End Site GPS Cordiantes' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [I16] val='Dar Es Salaam ' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(center,center)
+=== ROW 17 ===
+  [H17] val='A-End Street name & City' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [I17] val='Mikocheni A Senga Road' | fill=00000000 | font=Calibri 9.0pt bold=False italic=False color=None | align=(left,None)
+=== ROW 18 ===
+=== ROW 19 ===
+  [H19] val='B-End Site GPS Cordiantes' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+=== ROW 20 ===
+  [B20] val='Initial Remote hands required' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [C20] val='YES                               ' | fill=00000000 | font=Calibri 9.0pt bold=False italic=False color=None | align=(left,None)
+  [H20] val='B-end Street name & City' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+=== ROW 21 ===
+  [B21] val='New Cross Connect Requred' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [C21] val='YES                               ' | fill=00000000 | font=Calibri 9.0pt bold=False italic=False color=None | align=(left,None)
+  [H21] val="Savanna's tool Feasibility" | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [I21] val='Feasible  ' | fill=00000000 | font=Calibri 9.0pt bold=False italic=False color=None | align=(right,center)
+  [K21] val=' Not-Feasible' | fill=00000000 | font=Calibri 9.0pt bold=False italic=False color=Values must be of type <class 'str'> | align=(right,None)
+=== ROW 22 ===
+  [B22] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(center,center)
+=== ROW 23 ===
+  [B23] val='COMMERCIAL' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [C23] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(right,center)
+  [D23] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [E23] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(right,center)
+  [F23] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [G23] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [H23] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [I23] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(center,center)
+=== ROW 24 ===
+  [B24] val='Billing Cycle' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [C24] val='MONTHLY' | fill=00000000 | font=Calibri 9.0pt bold=False italic=False color=Values must be of type <class 'str'> | align=(right,None)
+  [D24] val='✔' | fill=00000000 | font=Arial 8.0pt bold=True italic=False color=FF000000 | align=(None,None)
+  [H24] val=' Currency of Payment' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [I24] val='TZS' | fill=00000000 | font=Calibri 9.0pt bold=False italic=False color=Values must be of type <class 'str'> | align=(right,None)
+  [J24] val='✔' | fill=00000000 | font=Arial 8.0pt bold=True italic=False color=FF000000 | align=(None,None)
+  [K24] val='USD' | fill=00000000 | font=Calibri 9.0pt bold=False italic=False color=Values must be of type <class 'str'> | align=(right,None)
+  [L24] val=None | fill=Values must be of type <class 'str'> | font=Calibri 11.0pt bold=True italic=False color=None | align=(center,None)
+=== ROW 25 ===
+  [B25] val='Minimum Term (Months)' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [C25] val=12 | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(right,center)
+  [D25] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [E25] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [F25] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [G25] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H25] val='USD to TZ rate' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [I25] val=2700 | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(right,center)
+  [J25] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [K25] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [L25] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+=== ROW 26 ===
+  [B26] val='Monthly Charges ' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [C26] val=262.96 | fill=00000000 | font=Calibri 9.0pt bold=True italic=False color=None | align=(right,center)
+  [D26] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(center,center)
+  [H26] val='Set-Up Charges ' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [I26] val=0 | fill=00000000 | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [J26] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(center,center)
+=== ROW 27 ===
+  [B27] val='VAT 18%' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [C27] val=47.33279999999999 | fill=00000000 | font=Calibri 9.0pt bold=True italic=False color=None | align=(right,center)
+  [D27] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(center,center)
+  [H27] val='VAT 18%' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [I27] val=0 | fill=00000000 | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [J27] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(center,center)
+=== ROW 28 ===
+  [B28] val='Total MRC Charge' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [C28] val=310.29279999999994 | fill=00000000 | font=Calibri 9.0pt bold=True italic=False color=None | align=(right,center)
+  [D28] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(center,center)
+  [H28] val='Total NRC Charge' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [I28] val=0 | fill=00000000 | font=Calibri 9.0pt bold=True italic=False color=None | align=(left,center)
+  [J28] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(center,center)
+=== ROW 29 ===
+  [B29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [C29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [D29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [E29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [F29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [G29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [H29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [I29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [J29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [K29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [L29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [M29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [N29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [O29] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+=== ROW 30 ===
+  [B30] val='TERMS AND CONDITIONS' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 31 ===
+  [B31] val='1. All Invoices shall be raise in TZS at the rate specified above' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 32 ===
+  [B32] val='2. These Terms and Conditions constitute the agreement for services between Savanna Business Enterprise Tanzania and the Client.' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 33 ===
+  [B33] val="3. This agreement shall, subject to the applicable termination provisions in the Master Services Agreement, continue for the initial fixed term indicated in this Service Order Form and shall commence from the Service activation date at the Customer's premises." | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 34 ===
+  [B34] val='4. At the end of the initial term, the Service will automatically renew for successive renewal terms equal in length to the initial term unless and until ' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 35 ===
+  [B35] val="terminated by either Party in any given renewal term, with 30 days' termination notice. Such termination by the Customer shall be in writing and delivered to the Account Manager." | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 36 ===
+  [B36] val='5. Billing for the Services shall commence on the date that the respective Service has been activated by Savanna Business Enterprise.' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 37 ===
+  [B37] val='6. Savanna Business Enterprise will invoice the Customer monthly for payment in full within 30 days of the date of the invoice. Savanna Business Enterprise reserves the right to suspend the Service if the Customer defaults on payment and may, at its discretion, suspend services where charges have not been paid by the due date.' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 38 ===
+  [B38] val='7. If the customer terminates the service before the end of the initial term, Customer shall pay the Early Termination Fee and refund any discounts received.' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 39 ===
+  [B39] val='Payment shall be made within  (15) days of termination.' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 40 ===
+  [B40] val='8. By signing this Service Order Form, the Customer confirms the accuracy of the information provided, agrees to notify Savanna Business Enterprise of any changes, and acknowledges that this Form,.' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 41 ===
+  [B41] val='9. The construction, validity and performance of these Terms and Conditions shall be governed by the Laws of the United Republic of Tanzania.' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(left,center)
+=== ROW 42 ===
+  [B42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [C42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [D42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [E42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [F42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [G42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [H42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [I42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [J42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [K42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [L42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [M42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [N42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+  [O42] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=True color=Values must be of type <class 'str'> | align=(None,center)
+=== ROW 43 ===
+  [B43] val='DECLARATION ' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(left,center)
+  [C43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(center,center)
+  [D43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(center,center)
+  [E43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(center,center)
+  [F43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(center,center)
+  [G43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(center,center)
+  [H43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [I43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [J43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [K43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [L43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [M43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [N43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+  [O43] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(None,center)
+=== ROW 44 ===
+  [B44] val='By signing below, the authorized representatives of both parties agree to the terms and conditions outlined in this Service Order Form and the referenced Master Service Agreement. Savanna  is authorized to proceed with the installation and provisioning of the service described herein.' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=False color=None | align=(left,top)
+=== ROW 45 ===
+  [B45] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(left,center)
+  [C45] val='SMARTCODES LTD' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(left,center)
+  [H45] val='Savanna Business Enterprise' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=FFFFFFFF | align=(left,center)
+=== ROW 46 ===
+  [B46] val='Name' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H46] val='Name' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+=== ROW 47 ===
+  [B47] val='Title' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H47] val='Title' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+=== ROW 48 ===
+  [B48] val='Signature & Date' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H48] val='Signature & Date' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+=== ROW 49 ===
+  [B49] val='Stamp' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+  [H49] val='Stamp' | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=True italic=False color=None | align=(None,center)
+=== ROW 50 ===
+  [C50] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=False color=Values must be of type <class 'str'> | align=(right,None)
+  [E50] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=False color=Values must be of type <class 'str'> | align=(right,None)
+=== ROW 51 ===
+  [C51] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=False color=Values must be of type <class 'str'> | align=(right,None)
+  [E51] val=None | fill=Values must be of type <class 'str'> | font=Calibri 9.0pt bold=False italic=False color=Values must be of type <class 'str'> | align=(right,None)

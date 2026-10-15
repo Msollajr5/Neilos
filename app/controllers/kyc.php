@@ -7,11 +7,13 @@ requireLogin();
 
 $db     = getDB();
 $user   = currentUser();
-$action = $_GET['action'] ?? 'index';
+// For POST requests the action comes from the hidden _action field in the form body;
+// for GET requests it comes from the URL query string.
+$action = ($_SERVER['REQUEST_METHOD'] === 'POST')
+    ? (trim($_POST['_action'] ?? $_GET['action'] ?? 'index'))
+    : ($_GET['action'] ?? 'index');
 
-// Ensure schema is updated
-ensureKycSchema($db);
-
+if (!function_exists('ensureKycSchema')) {
 function ensureKycSchema(PDO $db): void {
     static $done = false;
     if ($done) return;
@@ -37,9 +39,13 @@ function ensureKycSchema(PDO $db): void {
         $cols = [
             'office_address'              => "TEXT NULL",
             'address'                     => "TEXT NULL",
+            'auth_signatory_title'        => "VARCHAR(150) NULL",
+            'signatory2_title'            => "VARCHAR(150) NULL",
             'signatory2_name'             => "VARCHAR(200) NULL",
             'signatory2_email'            => "VARCHAR(200) NULL",
             'signatory2_phone'            => "VARCHAR(50) NULL",
+            'tech_supervisor_title'       => "VARCHAR(150) NULL",
+            'billing_contact_title'       => "VARCHAR(150) NULL",
             'billing_contact_name'        => "VARCHAR(200) NULL",
             'billing_contact_email'       => "VARCHAR(200) NULL",
             'billing_contact_phone'       => "VARCHAR(50) NULL",
@@ -57,7 +63,14 @@ function ensureKycSchema(PDO $db): void {
             'confidentiality_accepted'    => "TINYINT(1) DEFAULT 0",
             'confidentiality_accepted_at' => "DATETIME NULL",
             'accepted_by'                 => "INT UNSIGNED NULL",
-            'custom_fields'               => "JSON NULL"
+            'custom_fields'               => "JSON NULL",
+            // Partner-specific mandatory documents
+            'partner_tin_certificate'     => "VARCHAR(500) NULL",
+            'partner_vrn_certificate'     => "VARCHAR(500) NULL",
+            'partner_incorporation_cert'  => "VARCHAR(500) NULL",
+            'partner_tcra_certificate'    => "VARCHAR(500) NULL",
+            'partner_tax_clearance'       => "VARCHAR(500) NULL",
+            'partner_business_licence'    => "VARCHAR(500) NULL"
         ];
 
         foreach ($cols as $col => $def) {
@@ -68,7 +81,12 @@ function ensureKycSchema(PDO $db): void {
         $done = true;
     } catch (Exception $e) {}
 }
+}
 
+// Ensure schema is updated
+ensureKycSchema($db);
+
+if (!function_exists('recordKycHistory')) {
 function recordKycHistory(PDO $db, int $kycId, string $actionTitle, ?string $fromStatus, string $toStatus, ?string $details = null): void {
     $user = currentUser();
     $userId = $user ? (int)$user['id'] : null;
@@ -78,6 +96,7 @@ function recordKycHistory(PDO $db, int $kycId, string $actionTitle, ?string $fro
         $db->prepare("INSERT INTO kyc_history (kyc_id, action_by, action_role, from_status, to_status, action_title, details) VALUES (?,?,?,?,?,?,?)")
            ->execute([$kycId, $userId, $userRole, $fromStatus, $toStatus, $actionTitle, $details]);
     } catch (Exception $e) {}
+}
 }
 
 // ------------------------------------------------------------------
@@ -124,19 +143,30 @@ if ($action === 'api_entity_data') {
 // ------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'delete_doc') {
     verifyCsrf();
-    if (isPartnerUser() || isContractorUser()) {
-        setFlash('danger', 'Permission denied.');
-        header('Location: ' . APP_URL . '/?page=kyc');
-        exit;
-    }
-
     $kycId  = (int)($_POST['kyc_id'] ?? 0);
     $docKey = preg_replace('/[^a-z0-9_]/', '', $_POST['doc_key'] ?? '');
 
+    if (isPartnerUser() || isContractorUser()) {
+        $userPartnerId = (int)($user['partner_id'] ?? 0);
+        $checkStmt = $db->prepare("SELECT partner_id, status FROM partner_kyc_applications WHERE id = ?");
+        $checkStmt->execute([$kycId]);
+        $kRow = $checkStmt->fetch();
+        if (!$kRow || (int)$kRow['partner_id'] !== $userPartnerId) {
+            setFlash('danger', 'Permission denied.');
+            header('Location: ' . APP_URL . '/?page=kyc');
+            exit;
+        }
+    }
+
     $validCols = [
-        'business_license', 'contractor_agreement', 'signed_sla_file', 
-        'safety_esg_file', 'confidentiality_nda_file', 'service_regions_file', 
-        'hse_certificate', 'trca_certificate'
+        // Contractor docs
+        'business_license', 'contractor_agreement', 'signed_sla_file',
+        'safety_esg_file', 'confidentiality_nda_file', 'service_regions_file',
+        'hse_certificate', 'trca_certificate',
+        // Partner docs
+        'partner_tin_certificate', 'partner_vrn_certificate',
+        'partner_incorporation_cert', 'partner_tcra_certificate',
+        'partner_tax_clearance', 'partner_business_licence',
     ];
 
     if ($kycId > 0 && in_array($docKey, $validCols)) {
@@ -162,16 +192,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'delete_doc') {
 // POST: Save Draft / Submit / Resubmit
 // ------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['save_draft', 'submit', 'resubmit'])) {
-    if (isPartnerUser() || isContractorUser()) {
-        setFlash('danger', 'Permission denied. Only Admin and Management can edit or submit KYC applications.');
-        header('Location: ' . APP_URL . '/?page=kyc');
-        exit;
-    }
     verifyCsrf();
+    requirePermission('kyc.create');
 
     $kycId     = (int)($_POST['kyc_id'] ?? 0);
     $partnerId = (int)($_POST['partner_id'] ?? 0);
     $kycType   = $_POST['kyc_type'] ?? 'Partner';
+
+    if (isPartnerUser() || isContractorUser()) {
+        $userPartnerId = (int)($user['partner_id'] ?? 0);
+        if (!$userPartnerId) {
+            setFlash('danger', 'Your account is not linked to any partner entity.');
+            header('Location: ' . APP_URL . '/?page=dashboard');
+            exit;
+        }
+        $partnerId = $userPartnerId;
+        if ($kycId > 0) {
+            $checkStmt = $db->prepare("SELECT partner_id FROM partner_kyc_applications WHERE id = ?");
+            $checkStmt->execute([$kycId]);
+            $ownerPartnerId = (int)$checkStmt->fetchColumn();
+            if ($ownerPartnerId !== $userPartnerId) {
+                setFlash('danger', 'Unauthorized access.');
+                header('Location: ' . APP_URL . '/?page=kyc');
+                exit;
+            }
+        }
+    }
 
     if (!$partnerId) {
         setFlash('danger', 'Please select a valid Partner or Contractor.');
@@ -200,7 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['save_draft', 's
            ->execute([$partnerId, $kycType]);
         $kycId = (int)$db->lastInsertId();
         $oldStatus = 'Draft';
-        recordKycHistory($db, $kycId, 'KYC Created by Admin/Management', null, 'Draft');
+        recordKycHistory($db, $kycId, 'KYC Created by ' . ($user['role'] ?: 'Internal User'), null, 'Draft');
     } else {
         $kycId = (int)$app['id'];
         $oldStatus = $app['status'];
@@ -235,23 +281,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['save_draft', 's
         'country'                   => $_POST['country'] ?? 'Tanzania',
         
         // Contacts
+        'auth_signatory_title'      => $_POST['auth_signatory_title'] ?? null,
         'auth_signatory_name'       => $_POST['auth_signatory_name'] ?? null,
         'auth_signatory_email'      => $_POST['auth_signatory_email'] ?? null,
         'auth_signatory_mobile'     => $_POST['auth_signatory_mobile'] ?? null,
 
+        'signatory2_title'          => $_POST['signatory2_title'] ?? null,
         'signatory2_name'           => $_POST['signatory2_name'] ?? null,
         'signatory2_email'          => $_POST['signatory2_email'] ?? null,
         'signatory2_phone'          => $_POST['signatory2_phone'] ?? null,
 
+        'tech_supervisor_title'     => $_POST['tech_supervisor_title'] ?? null,
         'tech_supervisor_name'      => $_POST['tech_supervisor_name'] ?? null,
         'tech_supervisor_email'     => $_POST['tech_supervisor_email'] ?? null,
         'tech_supervisor_phone'     => $_POST['tech_supervisor_phone'] ?? null,
 
+        'billing_contact_title'     => $_POST['billing_contact_title'] ?? null,
         'billing_contact_name'      => $_POST['billing_contact_name'] ?? null,
         'billing_contact_email'     => $_POST['billing_contact_email'] ?? null,
         'billing_contact_phone'     => $_POST['billing_contact_phone'] ?? null,
 
-        // Bank Details
+        // Bank Details (Optional)
         'bank_name'                 => $_POST['bank_name'] ?? null,
         'bank_branch'               => $_POST['bank_branch'] ?? null,
         'bank_account_name'         => $_POST['bank_account_name'] ?? null,
@@ -278,6 +328,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['save_draft', 's
         'confidentiality_accepted_at'=> !empty($_POST['confidentiality_accepted']) ? date('Y-m-d H:i:s') : null,
     ];
 
+    // Ensure title columns exist in partner_kyc_applications
+    try { $db->exec("ALTER TABLE partner_kyc_applications ADD COLUMN auth_signatory_title VARCHAR(150) NULL AFTER auth_signatory_mobile"); } catch (Throwable $e) {}
+    try { $db->exec("ALTER TABLE partner_kyc_applications ADD COLUMN signatory2_title VARCHAR(150) NULL AFTER signatory2_phone"); } catch (Throwable $e) {}
+    try { $db->exec("ALTER TABLE partner_kyc_applications ADD COLUMN tech_supervisor_title VARCHAR(150) NULL AFTER tech_supervisor_phone"); } catch (Throwable $e) {}
+    try { $db->exec("ALTER TABLE partner_kyc_applications ADD COLUMN billing_contact_title VARCHAR(150) NULL AFTER billing_contact_phone"); } catch (Throwable $e) {}
+
     // Dynamically query columns of partner_kyc_applications to prevent SQL 1054 Unknown Column errors
     $existingColsStmt = $db->query("SHOW COLUMNS FROM partner_kyc_applications");
     $existingCols = $existingColsStmt->fetchAll(PDO::FETCH_COLUMN);
@@ -299,24 +355,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['save_draft', 's
     $db->prepare("UPDATE partners SET kyc_type = ?, name = IF(name='', ?, name), tin = IF(tin='', ?, tin), registration_number = IF(registration_number='', ?, registration_number) WHERE id = ?")
        ->execute([$kycType, $fields['registered_name'], $fields['tin'], $fields['registration_number'], $partnerId]);
 
-    // Handle ALL 8 File Uploads (Business License + 7 Compliance Items)
+    // Handle all file uploads — Contractor docs + Partner-specific docs
     $fileMap = [
-        'business_license'          => 'Business License',
-        'contractor_agreement'      => 'Contractor Agreement',
-        'signed_sla_file'           => 'Signed SLA Acceptance Document',
-        'safety_esg_file'           => 'Safety / ESG Policy Document',
-        'confidentiality_nda_file'  => 'Confidentiality Clause / NDA Document',
-        'service_regions_file'      => 'Service Regions Supporting Document',
-        'hse_certificate'           => 'HSE Certificate',
-        'trca_certificate'          => 'TRCA Installation License'
+        // Contractor documents
+        'business_license'           => 'Business License',
+        'contractor_agreement'       => 'Contractor Agreement',
+        'signed_sla_file'            => 'Signed SLA Acceptance Document',
+        'safety_esg_file'            => 'Safety / ESG Policy Document',
+        'confidentiality_nda_file'   => 'Confidentiality & Non-Disclosure Agreement (NDA)',
+        'service_regions_file'       => 'Service Regions Supporting Document',
+        'hse_certificate'            => 'HSE Certificate',
+        'trca_certificate'           => 'TCRA / Regulatory License',
+
+        // Partner-specific documents
+        'partner_tin_certificate'    => 'TIN Certificate',
+        'partner_vrn_certificate'    => 'VRN Certificate',
+        'partner_incorporation_cert' => 'Certificate of Incorporation',
+        'partner_tcra_certificate'   => 'TCRA Certificate',
+        'partner_tax_clearance'      => 'Tax Clearance Certificate',
+        'partner_business_licence'   => 'Business Licence Certificate',
     ];
 
-    foreach ($fileMap as $fileInputKey => $docLabel) {
-        if (!empty($_FILES[$fileInputKey]['name'])) {
+    foreach ($fileMap as $inputKey => $docTitle) {
+        if (!empty($_FILES[$inputKey]['name']) && $_FILES[$inputKey]['error'] === UPLOAD_ERR_OK) {
             try {
-                $up = uploadFile($_FILES[$fileInputKey], 'kyc/' . $kycId);
-                $db->prepare("UPDATE partner_kyc_applications SET {$fileInputKey} = ? WHERE id = ?")
-                   ->execute([$up['path'], $kycId]);
+                $upload = uploadFile($_FILES[$inputKey], 'kyc/' . $kycId);
+                $db->prepare("UPDATE partner_kyc_applications SET {$inputKey} = ? WHERE id = ?")
+                   ->execute([$upload['path'], $kycId]);
             } catch (Exception $e) {}
         }
     }
@@ -325,80 +390,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['save_draft', 's
     if ($action === 'submit' || $action === 'resubmit') {
         $missing = [];
         if (empty($_POST['registered_name']))        $missing[] = 'Partner/Contractor Name';
-        if (empty($_POST['registration_number']))   $missing[] = 'Registration Number';
-        if (empty($_POST['tin']))                   $missing[] = 'TIN';
-        if (empty($_POST['vat_vrn']))               $missing[] = 'VAT Number';
         if (empty($_POST['office_address']))        $missing[] = 'Physical Address';
         
         $curKyc = $db->query("SELECT * FROM partner_kyc_applications WHERE id = $kycId")->fetch();
-        
-        // Document 1: Business License
-        if (empty($curKyc['business_license']) && empty($_FILES['business_license']['name'])) {
-            $missing[] = 'Business License Document';
-        }
 
-        // Contacts - Signatory 1
+        // Contacts — required for both Partner and Contractor
         if (empty($_POST['auth_signatory_name']))   $missing[] = 'Signatory 1 Name';
         if (empty($_POST['auth_signatory_email']))  $missing[] = 'Signatory 1 Email';
         if (empty($_POST['auth_signatory_mobile'])) $missing[] = 'Signatory 1 Phone';
-
-        // Contacts - Signatory 2
         if (empty($_POST['signatory2_name']))       $missing[] = 'Signatory 2 Name';
         if (empty($_POST['signatory2_email']))      $missing[] = 'Signatory 2 Email';
         if (empty($_POST['signatory2_phone']))      $missing[] = 'Signatory 2 Phone';
-
-        // Contacts - Technical Contact
         if (empty($_POST['tech_supervisor_name']))  $missing[] = 'Technical Contact Name';
         if (empty($_POST['tech_supervisor_email'])) $missing[] = 'Technical Contact Email';
         if (empty($_POST['tech_supervisor_phone'])) $missing[] = 'Technical Contact Phone';
-
-        // Contacts - Billing Contact
         if (empty($_POST['billing_contact_name']))  $missing[] = 'Billing Contact Name';
         if (empty($_POST['billing_contact_email'])) $missing[] = 'Billing Contact Email';
         if (empty($_POST['billing_contact_phone'])) $missing[] = 'Billing Contact Phone';
 
-        // All 7 Compliance Documents
-        if (empty($curKyc['contractor_agreement']) && empty($_FILES['contractor_agreement']['name'])) {
-            $missing[] = '1. Contractor Agreement Document';
-        }
-        if (empty($curKyc['signed_sla_file']) && empty($_FILES['signed_sla_file']['name'])) {
-            $missing[] = '2. Signed SLA Acceptance Document';
-        }
-        if (empty($curKyc['safety_esg_file']) && empty($_FILES['safety_esg_file']['name'])) {
-            $missing[] = '3. Safety / ESG Policy Acceptance Document';
-        }
-        if (empty($curKyc['confidentiality_nda_file']) && empty($_FILES['confidentiality_nda_file']['name'])) {
-            $missing[] = '4. Confidentiality Clause / NDA Acceptance Document';
-        }
-        if (empty($curKyc['service_regions_file']) && empty($_FILES['service_regions_file']['name'])) {
-            $missing[] = '5. Service Regions Supporting Document';
-        }
-        if (empty($curKyc['hse_certificate']) && empty($_FILES['hse_certificate']['name'])) {
-            $missing[] = '6. HSE Certificate Document';
-        }
-        if (empty($curKyc['trca_certificate']) && empty($_FILES['trca_certificate']['name'])) {
-            $missing[] = '7. TRCA Installation License Document';
-        }
+        // Bank Details are optional as requested
 
-        // Compliance Acceptances
-        if (empty($_POST['sla_accepted']))              $missing[] = 'SLA Policy Confirmation';
-        if (empty($_POST['safety_esg_accepted']))        $missing[] = 'Safety / ESG Policy Confirmation';
-        if (empty($_POST['confidentiality_accepted']))  $missing[] = 'Confidentiality Clause Confirmation';
-
-        // Service Regions Selection
-        if (empty($_POST['service_regions']))            $missing[] = 'Service Regions (Select at least one region)';
-
-        // Bank Details
-        if (empty($_POST['bank_name']))             $missing[] = 'Bank Name';
-        if (empty($_POST['bank_branch']))           $missing[] = 'Bank Branch';
-        if (empty($_POST['bank_account_name']))     $missing[] = 'Bank Account Name';
-        if (empty($_POST['bank_account_number']))   $missing[] = 'Bank Account Number';
-        if (empty($_POST['bank_payment_terms']))    $missing[] = 'Payment Terms';
-
-        // Capabilities
-        $hasCap = (!empty($_POST['cap_ftth_install']) || !empty($_POST['cap_sme_install']) || !empty($_POST['cap_enterprise_install']) || !empty($_POST['cap_site_survey']) || !empty($_POST['cap_maintenance']) || !empty($_POST['cap_remote_support']));
-        if (!$hasCap) {
-            $missing[] = 'Capabilities (Select at least one capability)';
+        if ($kycType === 'Partner') {
+            // ── PARTNER: 3 mandatory document uploads (TIN, VRN, and TCRA Certificate are optional) ──
+            if (empty($curKyc['partner_incorporation_cert']) && empty($_FILES['partner_incorporation_cert']['name']))
+                $missing[] = '3. Certificate of Incorporation';
+            if (empty($curKyc['partner_tax_clearance']) && empty($_FILES['partner_tax_clearance']['name']))
+                $missing[] = '5. Tax Clearance Certificate';
+            if (empty($curKyc['partner_business_licence']) && empty($_FILES['partner_business_licence']['name']))
+                $missing[] = '6. Business Licence Certificate';
+        } else {
+            // ── CONTRACTOR: original 7 compliance docs + extras ───────────
+            if (empty($curKyc['business_license']) && empty($_FILES['business_license']['name']))
+                $missing[] = 'Business License Document';
+            if (empty($curKyc['contractor_agreement']) && empty($_FILES['contractor_agreement']['name']))
+                $missing[] = '1. Contractor Agreement Document';
+            if (empty($curKyc['signed_sla_file']) && empty($_FILES['signed_sla_file']['name']))
+                $missing[] = '2. Signed SLA Acceptance Document';
+            if (empty($curKyc['safety_esg_file']) && empty($_FILES['safety_esg_file']['name']))
+                $missing[] = '3. Safety / ESG Policy Acceptance Document';
+            if (empty($curKyc['confidentiality_nda_file']) && empty($_FILES['confidentiality_nda_file']['name']))
+                $missing[] = '4. Confidentiality Clause / NDA Acceptance Document';
+            if (empty($curKyc['service_regions_file']) && empty($_FILES['service_regions_file']['name']))
+                $missing[] = '5. Service Regions Supporting Document';
+            if (empty($curKyc['hse_certificate']) && empty($_FILES['hse_certificate']['name']))
+                $missing[] = '6. HSE Certificate Document';
+            if (empty($curKyc['trca_certificate']) && empty($_FILES['trca_certificate']['name']))
+                $missing[] = '7. TRCA Installation License Document';
+            if (empty($_POST['sla_accepted']))             $missing[] = 'SLA Policy Confirmation';
+            if (empty($_POST['safety_esg_accepted']))      $missing[] = 'Safety / ESG Policy Confirmation';
+            if (empty($_POST['confidentiality_accepted'])) $missing[] = 'Confidentiality Clause Confirmation';
+            if (empty($_POST['service_regions']))           $missing[] = 'Service Regions (Select at least one region)';
+            $hasCap = (!empty($_POST['cap_ftth_install']) || !empty($_POST['cap_sme_install']) || !empty($_POST['cap_enterprise_install']) || !empty($_POST['cap_site_survey']) || !empty($_POST['cap_maintenance']) || !empty($_POST['cap_remote_support']));
+            if (!$hasCap) $missing[] = 'Capabilities (Select at least one capability)';
         }
 
         if (!empty($missing)) {
@@ -417,136 +460,180 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['save_draft', 's
         publishSystemEvent('kyc_status_updated', null, ['kyc_id' => $kycId, 'status' => 'Submitted for Approval']);
 
         setFlash('success', 'KYC application submitted for approval successfully.');
+        header('Location: ' . APP_URL . '/?page=kyc');
+        exit;
     } else {
         $db->prepare("UPDATE partner_kyc_applications SET status = 'Draft' WHERE id = ?")->execute([$kycId]);
         recordKycHistory($db, $kycId, 'KYC Saved as Draft', $oldStatus, 'Draft');
         setFlash('success', 'KYC application draft saved.');
+        header('Location: ' . APP_URL . '/?page=kyc&action=edit&id=' . $kycId);
+        exit;
     }
-
-    header('Location: ' . APP_URL . '/?page=kyc&action=edit&id=' . $kycId);
-    exit;
 }
 
 // ------------------------------------------------------------------
-// POST: Partner/Contractor Approve KYC
+// ------------------------------------------------------------------
+// POST: Finance / Management Approve KYC
 // ------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'approve') {
     verifyCsrf();
     requirePermission('kyc.approve');
-    $kycId = (int)($_POST['kyc_id'] ?? 0);
+    $isAjax  = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
+    $kycId   = (int)($_POST['kyc_id'] ?? 0);
+    $remarks = trim($_POST['remarks'] ?? $_POST['review_notes'] ?? $_POST['notes'] ?? '');
 
-    $stmt = $db->prepare("SELECT pka.*, p.name as partner_name FROM partner_kyc_applications pka JOIN partners p ON pka.partner_id = p.id WHERE pka.id = ?");
+    $stmt = $db->prepare("SELECT pka.*, p.name as partner_name FROM partner_kyc_applications pka LEFT JOIN partners p ON pka.partner_id = p.id WHERE pka.id = ?");
     $stmt->execute([$kycId]);
     $app = $stmt->fetch();
 
     if (!$app) {
+        if ($isAjax) {
+            http_response_code(404);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'KYC application not found.']);
+            exit;
+        }
         setFlash('danger', 'KYC application not found.');
         header('Location: ' . APP_URL . '/?page=kyc');
         exit;
     }
 
     if ($app['status'] === 'Approved') {
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => true, 'message' => 'This KYC application is already approved.']);
+            exit;
+        }
         setFlash('info', 'This KYC application is already approved.');
         header('Location: ' . APP_URL . '/?page=kyc&action=view&id=' . $kycId);
         exit;
     }
 
     if (!in_array($app['status'], ['Submitted for Approval', 'Pending Approval', 'Submitted'])) {
+        if ($isAjax) {
+            http_response_code(400);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'This KYC application cannot be approved in its current status (' . $app['status'] . ').']);
+            exit;
+        }
         setFlash('danger', 'This KYC application cannot be approved in its current status (' . $app['status'] . ').');
         header('Location: ' . APP_URL . '/?page=kyc&action=view&id=' . $kycId);
-        exit;
-    }
-
-    // Strict Authorization: Admin and Management CANNOT approve KYC.
-    // ONLY the assigned Partner or Contractor user can approve!
-    if (isAdmin() || hasRole('Management') || (!isPartnerUser() && !isContractorUser())) {
-        setFlash('danger', 'Unauthorized: Admin and Management users cannot approve or reject KYC applications. Approval or rejection must be performed by the assigned Partner or Contractor.');
-        header('Location: ' . APP_URL . '/?page=kyc');
-        exit;
-    }
-
-    if ((int)$user['partner_id'] !== (int)$app['partner_id']) {
-        setFlash('danger', 'Unauthorized: You can only approve your own organization’s KYC application.');
-        header('Location: ' . APP_URL . '/?page=kyc');
         exit;
     }
 
     $db->prepare("UPDATE partner_kyc_applications SET status = 'Approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?")
        ->execute([$user['id'], $kycId]);
 
-    recordKycHistory($db, $kycId, 'KYC Approved by ' . ($user['role'] ?: 'Partner'), $app['status'], 'Approved', "Approved by {$user['full_name']} ({$user['email']})");
+    // Activate the partner record if linked
+    if (!empty($app['partner_id'])) {
+        try {
+            $db->prepare("UPDATE partners SET status = 'Active' WHERE id = ?")->execute([$app['partner_id']]);
+        } catch (Throwable $t) {}
+    }
+
+    $actorRole = isFinance() ? 'Finance' : ($user['role'] ?: 'Management');
+    $histDetails = "Approved by {$user['full_name']} ({$actorRole})" . ($remarks !== '' ? " · Remarks: {$remarks}" : "");
+    recordKycHistory($db, $kycId, "KYC Approved by {$actorRole}", $app['status'], 'Approved', $histDetails);
 
     queueKycNotification($kycId, 'Approve');
     publishSystemEvent('kyc_status_updated', null, ['kyc_id' => $kycId, 'status' => 'Approved']);
 
-    auditLog("KYC #$kycId Approved", 'kyc', $kycId);
-    setFlash('success', 'KYC Application approved successfully.');
-    header('Location: ' . APP_URL . '/?page=kyc&action=view&id=' . $kycId);
+    auditLog("KYC #$kycId Approved by {$user['full_name']}" . ($remarks ? " ($remarks)" : ""), 'kyc', $kycId);
+    
+    if ($isAjax) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true, 'message' => 'KYC Application approved successfully. Partner is now marked as Active.']);
+        exit;
+    }
+
+    setFlash('success', 'KYC Application approved successfully. Partner is now marked as Active.');
+    $redir = !empty($_POST['redirect_to']) ? $_POST['redirect_to'] : (APP_URL . '/?page=kyc&action=view&id=' . $kycId);
+    header('Location: ' . $redir);
     exit;
 }
 
 // ------------------------------------------------------------------
-// POST: Partner/Contractor Reject KYC
+// POST: Finance / Management Reject KYC
 // ------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'reject') {
     verifyCsrf();
     requirePermission('kyc.reject');
+    $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
     $kycId  = (int)($_POST['kyc_id'] ?? 0);
-    $reason = trim($_POST['rejection_reason'] ?? '');
+    $reason = trim($_POST['rejection_reason'] ?? $_POST['review_notes'] ?? $_POST['notes'] ?? '');
 
-    $stmt = $db->prepare("SELECT pka.*, p.name as partner_name FROM partner_kyc_applications pka JOIN partners p ON pka.partner_id = p.id WHERE pka.id = ?");
+    $stmt = $db->prepare("SELECT pka.*, p.name as partner_name FROM partner_kyc_applications pka LEFT JOIN partners p ON pka.partner_id = p.id WHERE pka.id = ?");
     $stmt->execute([$kycId]);
     $app = $stmt->fetch();
 
     if (!$app) {
+        if ($isAjax) {
+            http_response_code(404);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'KYC application not found.']);
+            exit;
+        }
         setFlash('danger', 'KYC application not found.');
         header('Location: ' . APP_URL . '/?page=kyc');
         exit;
     }
 
     if ($app['status'] === 'Approved') {
+        if ($isAjax) {
+            http_response_code(400);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'This KYC application is already approved and cannot be rejected.']);
+            exit;
+        }
         setFlash('danger', 'This KYC application is already approved and cannot be rejected.');
         header('Location: ' . APP_URL . '/?page=kyc&action=view&id=' . $kycId);
         exit;
     }
 
     if (!in_array($app['status'], ['Submitted for Approval', 'Pending Approval', 'Submitted'])) {
+        if ($isAjax) {
+            http_response_code(400);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'This KYC application cannot be rejected in its current status (' . $app['status'] . ').']);
+            exit;
+        }
         setFlash('danger', 'This KYC application cannot be rejected in its current status (' . $app['status'] . ').');
         header('Location: ' . APP_URL . '/?page=kyc&action=view&id=' . $kycId);
         exit;
     }
 
     if (empty($reason)) {
+        if ($isAjax) {
+            http_response_code(422);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'Rejection reason is mandatory.']);
+            exit;
+        }
         setFlash('danger', 'Rejection reason is mandatory.');
         header('Location: ' . APP_URL . '/?page=kyc&action=view&id=' . $kycId);
-        exit;
-    }
-
-    // Strict Authorization: Admin and Management CANNOT reject KYC.
-    // ONLY the assigned Partner or Contractor user can reject!
-    if (isAdmin() || hasRole('Management') || (!isPartnerUser() && !isContractorUser())) {
-        setFlash('danger', 'Unauthorized: Admin and Management users cannot approve or reject KYC applications. Approval or rejection must be performed by the assigned Partner or Contractor.');
-        header('Location: ' . APP_URL . '/?page=kyc');
-        exit;
-    }
-
-    if ((int)$user['partner_id'] !== (int)$app['partner_id']) {
-        setFlash('danger', 'Unauthorized: You can only reject your own organization’s KYC application.');
-        header('Location: ' . APP_URL . '/?page=kyc');
         exit;
     }
 
     $db->prepare("UPDATE partner_kyc_applications SET status = 'Rejected', rejection_reason = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?")
        ->execute([$reason, $user['id'], $kycId]);
 
-    recordKycHistory($db, $kycId, 'KYC Rejected by ' . ($user['role'] ?: 'Partner'), $app['status'], 'Rejected', "Reason: $reason");
+    $actorRole = isFinance() ? 'Finance' : ($user['role'] ?: 'Management');
+    recordKycHistory($db, $kycId, "KYC Rejected by {$actorRole}", $app['status'], 'Rejected', "Reason: $reason");
 
     queueKycNotification($kycId, 'Reject', $reason);
     publishSystemEvent('kyc_status_updated', null, ['kyc_id' => $kycId, 'status' => 'Rejected']);
 
     auditLog("KYC #$kycId Rejected. Reason: $reason", 'kyc', $kycId);
-    setFlash('warning', 'KYC Application rejected.');
-    header('Location: ' . APP_URL . '/?page=kyc&action=view&id=' . $kycId);
+
+    if ($isAjax) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true, 'message' => 'KYC Application has been rejected and returned to the applicant with feedback.']);
+        exit;
+    }
+
+    setFlash('warning', 'KYC Application has been rejected and returned to the applicant/KAM with feedback.');
+    $redir = !empty($_POST['redirect_to']) ? $_POST['redirect_to'] : (APP_URL . '/?page=kyc&action=view&id=' . $kycId);
+    header('Location: ' . $redir);
     exit;
 }
 
@@ -660,14 +747,83 @@ if ($action === 'new' || $action === 'edit' || $action === 'view') {
         $stmt->execute([$kycId]);
         $app = $stmt->fetch();
     } elseif ($isPartnerOrContractor) {
-        $partnerId = (int)$user['partner_id'];
+        $partnerId = (int)($user['partner_id'] ?? 0);
         $stmt = $db->prepare("SELECT pka.*, p.name as partner_name, u.full_name as reviewer_name
             FROM partner_kyc_applications pka
             JOIN partners p ON pka.partner_id = p.id
             LEFT JOIN users u ON pka.reviewed_by = u.id
-            WHERE pka.partner_id = ?");
+            WHERE pka.partner_id = ? ORDER BY pka.updated_at DESC LIMIT 1");
         $stmt->execute([$partnerId]);
         $app = $stmt->fetch();
+        if (!$app && $partnerId > 0) {
+            $pStmt = $db->prepare("SELECT * FROM partners WHERE id = ?");
+            $pStmt->execute([$partnerId]);
+            $pRow = $pStmt->fetch();
+            if ($pRow) {
+                $isContractorEnt = ($pRow['kyc_type'] === 'Contractor' || $pRow['partner_type'] === 'Contractor');
+                $app = [
+                    'id'                  => 0,
+                    'partner_id'          => $pRow['id'],
+                    'partner_name'        => $pRow['name'],
+                    'registered_name'     => $pRow['name'],
+                    'registration_number' => $pRow['registration_number'] ?? '',
+                    'tin'                 => $pRow['tin'] ?? '',
+                    'vat_vrn'             => $pRow['vat_vrn'] ?? '',
+                    'office_address'      => $pRow['address'] ?? '',
+                    'city_region'         => $pRow['city_region'] ?? 'Dar es Salaam',
+                    'country'             => $pRow['country'] ?? 'Tanzania',
+                    'kyc_type'            => $isContractorEnt ? 'Contractor' : 'Partner',
+                    'status'              => 'Draft',
+                    'auth_signatory_name' => $user['full_name'] ?? '',
+                    'auth_signatory_email'=> $user['email'] ?? '',
+                    'auth_signatory_mobile'=> $user['mobile'] ?? '',
+                ];
+            }
+        }
+    }
+
+    if (!$app && !empty($_GET['partner_id'])) {
+        $reqPartnerId = (int)$_GET['partner_id'];
+        $checkStmt = $db->prepare("SELECT pka.*, p.name as partner_name, u.full_name as reviewer_name
+            FROM partner_kyc_applications pka
+            JOIN partners p ON pka.partner_id = p.id
+            LEFT JOIN users u ON pka.reviewed_by = u.id
+            WHERE pka.partner_id = ? ORDER BY pka.updated_at DESC LIMIT 1");
+        $checkStmt->execute([$reqPartnerId]);
+        $existingKyc = $checkStmt->fetch();
+        if ($existingKyc) {
+            header('Location: ' . APP_URL . '/?page=kyc&action=' . ($existingKyc['status'] === 'Approved' ? 'view' : 'edit') . '&id=' . $existingKyc['id']);
+            exit;
+        }
+
+        $pStmt = $db->prepare("SELECT * FROM partners WHERE id = ?");
+        $pStmt->execute([$reqPartnerId]);
+        $pRow = $pStmt->fetch();
+        if ($pRow) {
+            $isContractorEnt = ($pRow['kyc_type'] === 'Contractor' || $pRow['partner_type'] === 'Contractor');
+            $app = [
+                'id' => 0,
+                'partner_id' => $pRow['id'],
+                'partner_name' => $pRow['name'],
+                'registered_name' => $pRow['name'],
+                'registration_number' => $pRow['registration_number'] ?? '',
+                'tin' => $pRow['tin'] ?? '',
+                'vat_vrn' => $pRow['vat_vrn'] ?? '',
+                'office_address' => $pRow['address'] ?? '',
+                'city_region' => $pRow['city_region'] ?? 'Dar es Salaam',
+                'country' => $pRow['country'] ?? 'Tanzania',
+                'kyc_type' => $isContractorEnt ? 'Contractor' : 'Partner',
+                'status' => 'Draft',
+            ];
+            $uStmt = $db->prepare("SELECT full_name, email, mobile FROM users WHERE partner_id = ? AND is_active = 1 LIMIT 1");
+            $uStmt->execute([$reqPartnerId]);
+            $uRow = $uStmt->fetch();
+            if ($uRow) {
+                $app['auth_signatory_name'] = $uRow['full_name'];
+                $app['auth_signatory_email'] = $uRow['email'];
+                $app['auth_signatory_mobile'] = $uRow['mobile'];
+            }
+        }
     }
 
     if ($isPartnerOrContractor && $app && (int)$user['partner_id'] !== (int)$app['partner_id']) {
@@ -676,20 +832,28 @@ if ($action === 'new' || $action === 'edit' || $action === 'view') {
         exit;
     }
 
-    $partnersList = $db->query("SELECT p.id, p.name, p.partner_type, p.kyc_type, pka.status as kyc_status, pka.id as kyc_app_id
-        FROM partners p 
-        LEFT JOIN partner_kyc_applications pka ON pka.partner_id = p.id AND (pka.kyc_type = 'Partner' OR pka.kyc_type IS NULL)
-        WHERE p.kyc_type = 'Partner' OR p.partner_type IN ('ISP','Reseller') 
-        ORDER BY p.name ASC")->fetchAll();
+    $pWherePartner = partnerWhere('p');
+    $partnersStmt = $db->prepare("SELECT p.id, p.name, p.partner_type, p.kyc_type,
+            pka.status as kyc_status, pka.id as kyc_app_id
+        FROM partners p
+        LEFT JOIN partner_kyc_applications pka
+            ON pka.partner_id = p.id AND pka.kyc_type = 'Partner'
+        WHERE (p.kyc_type = 'Partner' OR (p.kyc_type IS NULL AND p.partner_type NOT IN ('Other')))
+          AND {$pWherePartner['condition']}
+        ORDER BY p.name ASC");
+    $partnersStmt->execute($pWherePartner['params']);
+    $partnersList = $partnersStmt->fetchAll();
 
-    $contractorsList = $db->query("SELECT p.id, p.name, p.partner_type, p.kyc_type, pka.status as kyc_status, pka.id as kyc_app_id
-        FROM partners p 
-        LEFT JOIN partner_kyc_applications pka ON pka.partner_id = p.id AND pka.kyc_type = 'Contractor'
-        WHERE p.kyc_type = 'Contractor' OR p.partner_type = 'Contractor' 
+    $contractorsList = $db->query("SELECT p.id, p.name, p.partner_type, p.kyc_type,
+            pka.status as kyc_status, pka.id as kyc_app_id
+        FROM partners p
+        LEFT JOIN partner_kyc_applications pka
+            ON pka.partner_id = p.id AND pka.kyc_type = 'Contractor'
+        WHERE p.kyc_type = 'Contractor'
         ORDER BY p.name ASC")->fetchAll();
 
     $history = [];
-    if ($app) {
+    if ($app && !empty($app['id'])) {
         $hStmt = $db->prepare("SELECT kh.*, u.full_name as actor_name FROM kyc_history kh LEFT JOIN users u ON kh.action_by = u.id WHERE kh.kyc_id = ? ORDER BY kh.created_at DESC");
         $hStmt->execute([$app['id']]);
         $history = $hStmt->fetchAll();
@@ -704,29 +868,68 @@ if ($action === 'new' || $action === 'edit' || $action === 'view') {
 
 // Default: List view
 if ($isPartnerOrContractor) {
-    $partnerId = (int)$user['partner_id'];
-    $stmt = $db->prepare("SELECT id FROM partner_kyc_applications WHERE partner_id = ?");
+    $partnerId = (int)($user['partner_id'] ?? 0);
+    $stmt = $db->prepare("SELECT id, status FROM partner_kyc_applications WHERE partner_id = ? ORDER BY updated_at DESC LIMIT 1");
     $stmt->execute([$partnerId]);
     $existing = $stmt->fetch();
     if ($existing) {
-        header('Location: ' . APP_URL . '/?page=kyc&action=view&id=' . $existing['id']);
+        $targetAction = in_array($existing['status'], ['Draft', 'Needs Modification']) ? 'edit' : 'view';
+        header('Location: ' . APP_URL . '/?page=kyc&action=' . $targetAction . '&id=' . $existing['id']);
     } else {
-        setFlash('info', 'No KYC application has been created for your organization yet.');
-        header('Location: ' . APP_URL . '/?page=dashboard');
+        header('Location: ' . APP_URL . '/?page=kyc&action=new');
     }
     exit;
 }
 
 // Admin / Management List View
 $pw = partnerWhere('pka');
-$stmt = $db->prepare("SELECT pka.*, p.name as partner_name, u.full_name as reviewer_name
+$stmt = $db->prepare("SELECT pka.*, 
+       p.name as partner_name, 
+       p.partner_type,
+       COALESCE(NULLIF(pka.tin, ''), p.tin) as effective_tin,
+       COALESCE(NULLIF(pka.registration_number, ''), p.registration_number) as effective_reg_no,
+       u.full_name as reviewer_name
     FROM partner_kyc_applications pka
-    JOIN partners p ON pka.partner_id = p.id
+    LEFT JOIN partners p ON pka.partner_id = p.id
     LEFT JOIN users u ON pka.reviewed_by = u.id
     WHERE {$pw['condition']}
     ORDER BY pka.updated_at DESC");
 $stmt->execute($pw['params']);
 $applications = $stmt->fetchAll();
+
+// Calculate operational KPI metrics & group into ongoing vs approved
+$totalCount = count($applications);
+$submittedCount = 0;
+$approvedCount = 0;
+$draftCount = 0;
+$rejectedCount = 0;
+
+$ongoingApps = [];
+$approvedApps = [];
+
+foreach ($applications as $appItem) {
+    $st = $appItem['status'] ?? 'Draft';
+    if (in_array($st, ['Submitted for Approval', 'Pending Approval', 'Submitted'])) {
+        $submittedCount++;
+    } elseif ($st === 'Approved') {
+        $approvedCount++;
+    } elseif ($st === 'Rejected') {
+        $rejectedCount++;
+    } else {
+        $draftCount++;
+    }
+
+    if ($st === 'Approved') {
+        $approvedApps[] = $appItem;
+    } else {
+        $ongoingApps[] = $appItem;
+    }
+}
+
+$activeTab = trim($_GET['tab'] ?? '');
+if ($activeTab !== 'ongoing' && $activeTab !== 'approved') {
+    $activeTab = (count($ongoingApps) === 0 && count($approvedApps) > 0) ? 'approved' : 'ongoing';
+}
 
 $pageTitle = 'KYC Applications';
 include APP_DIR . '/views/layout/header.php';

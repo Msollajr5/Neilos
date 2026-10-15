@@ -59,14 +59,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hash = $stmt->fetchColumn();
         if (!password_verify($current, $hash)) {
             setFlash('danger', 'Current password is incorrect.');
-        } elseif (strlen($newPass) < 8) {
-            setFlash('danger', 'Password must be at least 8 characters.');
-        } elseif ($newPass !== $confirm) {
-            setFlash('danger', 'Passwords do not match.');
         } else {
-            $db->prepare("UPDATE users SET password = ? WHERE id = ?")->execute([password_hash($newPass, PASSWORD_BCRYPT), $user['id']]);
-            auditLog('Changed password', 'users', $user['id']);
-            setFlash('success', 'Password changed successfully.');
+            $policyErrors = validatePasswordPolicy($newPass, $hash, $confirm);
+            if (!empty($policyErrors)) {
+                setFlash('danger', implode('<br>', $policyErrors));
+            } else {
+                $db->prepare("UPDATE users SET password = ?, password_changed_at = NOW() WHERE id = ?")->execute([password_hash($newPass, PASSWORD_BCRYPT), $user['id']]);
+                auditLog('Changed password', 'users', $user['id']);
+
+                // Security confirmation email
+                if (!empty($user['email'])) {
+                    try {
+                        $html = renderPasswordChangedConfirmationEmail($user['full_name'], $user['username'] ?: $user['email']);
+                        dispatchDirectEmail($user['email'], "Security Alert: Your Password Was Changed", $html, "Your password on Neilos Partner Portal was changed.", 'users', $user['id']);
+                    } catch (Throwable $t) {}
+                }
+
+                $_SESSION['password_expired']    = false;
+                $_SESSION['password_warn']       = false;
+                $_SESSION['password_days_left']  = defined('PASSWORD_EXPIRY_DAYS') ? PASSWORD_EXPIRY_DAYS : 90;
+                $_SESSION['password_changed_at'] = date('Y-m-d H:i:s');
+                setFlash('success', 'Password changed successfully. Your 90-day password rotation cycle has been reset.');
+            }
         }
     }
 

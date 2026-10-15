@@ -4,8 +4,8 @@
 // ============================================================
 requireLogin();
 
-if (!isAdmin() && !hasRole('Management')) {
-    setFlash('danger', 'Access denied. Admin or Management only.');
+if (!isAdmin() && !hasRole('Management', 'Project Manager') && !hasPermission('users.view')) {
+    setFlash('danger', 'Access denied. Admin or Management permission required.');
     header('Location: ' . APP_URL . '/?page=dashboard');
     exit;
 }
@@ -17,7 +17,7 @@ $action = $_GET['action'] ?? 'list';
 // Auto-heal blank / legacy partner and contractor roles in database based on partner table relationships
 try {
     $db->exec("UPDATE users SET role = 'Partner' WHERE (role IS NULL OR role = '' OR role = 'Partner User') AND partner_id IN (SELECT id FROM partners WHERE kyc_type = 'Partner' OR partner_type IN ('ISP','Reseller'))");
-    $db->exec("UPDATE users SET role = 'Contractor' WHERE (role IS NULL OR role = '' OR role = 'Contractor User') AND partner_id IN (SELECT id FROM partners WHERE kyc_type = 'Contractor' OR partner_type = 'Contractor')");
+    $db->exec("UPDATE users SET role = 'Contractor' WHERE (role IS NULL OR role = '' OR role = 'Contractor User') AND partner_id IN (SELECT id FROM partners WHERE kyc_type = 'Contractor' OR partner_type = 'Other')");
 } catch (Exception $e) {}
 
 $roles = ['System Admin', 'BSA', 'KAM', 'Management', 'Project Manager', 'Contractor', 'Billing', 'Partner'];
@@ -79,9 +79,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create') {
 
             if ($existingCId) {
                 $partnerId = (int)$existingCId;
-                $db->prepare("UPDATE partners SET kyc_type = 'Contractor', partner_type = 'Contractor' WHERE id = ?")->execute([$partnerId]);
+                $db->prepare("UPDATE partners SET kyc_type = 'Contractor', partner_type = 'Other' WHERE id = ?")->execute([$partnerId]);
             } else {
-                $cInsert = $db->prepare("INSERT INTO partners (name, trading_name, partner_type, kyc_type, status, country) VALUES (?,?,'Contractor','Contractor','Active','Tanzania')");
+                $cInsert = $db->prepare("INSERT INTO partners (name, trading_name, partner_type, kyc_type, status, country) VALUES (?,?,'Other','Contractor','Active','Tanzania')");
                 $cInsert->execute([$fullName, $fullName]);
                 $partnerId = (int)$db->lastInsertId();
                 auditLog("Auto-created contractor record '$fullName' for Contractor user", 'partners', $partnerId);
@@ -100,6 +100,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create') {
         $userId = $db->lastInsertId();
 
         $db->commit();
+
+        // Dispatch Welcome & One-Time Credentials Email
+        $mailStatus = null;
+        try {
+            $loginUrl = getPortalBaseUrl() . '/?page=login';
+            $welcomeHtml = renderWelcomeCredentialsEmail($fullName, $username, 'Chang3Me!', $role, $loginUrl);
+            $mailStatus = dispatchDirectEmail($email, "Welcome to Neilos Partner Portal — Your Account Credentials", $welcomeHtml, "Welcome {$fullName}! Your temporary password is: Chang3Me! Please log in at {$loginUrl} and change it.", 'users', $userId);
+        } catch (Throwable $t) {
+            $mailStatus = ['success' => false, 'message' => $t->getMessage()];
+        }
     } catch (Exception $e) {
         $db->rollBack();
         setFlash('danger', 'Failed to create user: ' . $e->getMessage());
@@ -108,7 +118,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create') {
     }
 
     auditLog("Created user $fullName ($username)", 'users', $userId);
-    setFlash('success', "User <strong>" . e($fullName) . "</strong> created successfully. Default password: <strong>Chang3Me!</strong>");
+    $mailNote = ($mailStatus && $mailStatus['success'])
+        ? "Welcome email with login credentials has been delivered to <strong>" . e($email) . "</strong>."
+        : "User created, but welcome email could not be sent (" . e($mailStatus['message'] ?? 'Check SMTP connection') . "). You can click 'Resend Credentials Email' on the user profile.";
+    setFlash('success', "User <strong>" . e($fullName) . "</strong> created successfully. Default password: <strong>Chang3Me!</strong>. " . $mailNote);
     header('Location: ' . APP_URL . '/?page=users&action=detail&id=' . $userId);
     exit;
 }
@@ -139,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'edit') {
 
     $db->beginTransaction();
     try {
-        $uStmt = $db->prepare("SELECT role, partner_id FROM users WHERE id = ?");
+        $uStmt = $db->prepare("SELECT username, role, partner_id FROM users WHERE id = ?");
         $uStmt->execute([$userId]);
         $currUser = $uStmt->fetch();
         $partnerId = $currUser['partner_id'] ?? null;
@@ -162,17 +175,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'edit') {
             }
         } elseif ($role === 'Contractor') {
             if ($partnerId) {
-                $db->prepare("UPDATE partners SET kyc_type = 'Contractor', partner_type = 'Contractor' WHERE id = ?")->execute([$partnerId]);
+                $db->prepare("UPDATE partners SET kyc_type = 'Contractor', partner_type = 'Other' WHERE id = ?")->execute([$partnerId]);
             } else {
-                $cCheck = $db->prepare("SELECT id FROM partners WHERE (name = ? OR trading_name = ?) AND (kyc_type = 'Contractor' OR partner_type = 'Contractor') LIMIT 1");
+                $cCheck = $db->prepare("SELECT id FROM partners WHERE (name = ? OR trading_name = ?) AND (kyc_type = 'Contractor' OR partner_type = 'Other') LIMIT 1");
                 $cCheck->execute([$fullName, $fullName]);
                 $existingCId = $cCheck->fetchColumn();
 
                 if ($existingCId) {
                     $partnerId = (int)$existingCId;
-                    $db->prepare("UPDATE partners SET kyc_type = 'Contractor', partner_type = 'Contractor' WHERE id = ?")->execute([$partnerId]);
+                    $db->prepare("UPDATE partners SET kyc_type = 'Contractor', partner_type = 'Other' WHERE id = ?")->execute([$partnerId]);
                 } else {
-                    $cInsert = $db->prepare("INSERT INTO partners (name, trading_name, partner_type, kyc_type, status, country) VALUES (?,?,'Contractor','Contractor','Active','Tanzania')");
+                    $cInsert = $db->prepare("INSERT INTO partners (name, trading_name, partner_type, kyc_type, status, country) VALUES (?,?,'Other','Contractor','Active','Tanzania')");
                     $cInsert->execute([$fullName, $fullName]);
                     $partnerId = (int)$db->lastInsertId();
                 }
@@ -190,11 +203,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'edit') {
         $stmt = $db->prepare("UPDATE users SET full_name=?, email=?, mobile=?, role=?, partner_id=?, permissions=? WHERE id=?");
         $stmt->execute([$fullName, $email, $mobile, $role, $partnerId, $permissionsJson, $userId]);
 
+        $newPass = trim($_POST['new_password'] ?? '');
+        $confirmPass = trim($_POST['confirm_password'] ?? '');
+        $passwordChanged = false;
+
+        if (!empty($newPass)) {
+            if ($newPass !== $confirmPass) {
+                throw new Exception('New password and confirm password do not match.');
+            }
+            if (strlen($newPass) < 6) {
+                throw new Exception('Password must be at least 6 characters long.');
+            }
+            $requireFirstLogin = !empty($_POST['require_password_change']) ? 1 : 0;
+            $newHash = password_hash($newPass, PASSWORD_BCRYPT);
+            $db->prepare("UPDATE users SET password = ?, password_changed_at = NOW(), is_first_login = ? WHERE id = ?")
+               ->execute([$newHash, $requireFirstLogin, $userId]);
+            $passwordChanged = true;
+        }
+
         if ($userId === (int)($_SESSION['user_id'] ?? 0)) {
             $_SESSION['permissions'] = $permissionsJson;
         }
 
         $db->commit();
+
+        // Dispatch updated credentials email if password changed
+        if ($passwordChanged && !empty($_POST['send_password_email']) && !empty($email)) {
+            try {
+                $loginUrl = getPortalBaseUrl() . '/?page=login';
+                $uName = $currUser['username'] ?? $email;
+                $html = renderCredentialsUpdatedByAdminEmail($fullName, $uName, $newPass, $loginUrl);
+                dispatchDirectEmail($email, "Your Neilos Partner Portal Credentials Have Been Updated", $html, "Your login password has been updated to: {$newPass}. Log in at {$loginUrl}", 'users', $userId);
+            } catch (Throwable $t) {}
+        }
     } catch (Exception $e) {
         $db->rollBack();
         setFlash('danger', 'Failed to update user: ' . $e->getMessage());
@@ -202,8 +243,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'edit') {
         exit;
     }
 
-    auditLog("Updated user $fullName", 'users', $userId);
-    setFlash('success', 'User updated successfully.');
+    auditLog("Updated user $fullName" . ($passwordChanged ? ' (including password)' : ''), 'users', $userId);
+    setFlash('success', "User <strong>" . e($fullName) . "</strong> updated successfully." . ($passwordChanged ? ' New password has been applied.' : ''));
     header('Location: ' . APP_URL . '/?page=users&action=detail&id=' . $userId);
     exit;
 }
@@ -285,7 +326,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'reset_password') {
         exit;
     }
 
-    $stmt = $db->prepare("SELECT full_name FROM users WHERE id = ?");
+    $stmt = $db->prepare("SELECT full_name, username, email FROM users WHERE id = ?");
     $stmt->execute([$userId]);
     $target = $stmt->fetch();
     if (!$target) {
@@ -297,9 +338,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'reset_password') {
     $hash = password_hash('Chang3Me!', PASSWORD_BCRYPT);
     $db->prepare("UPDATE users SET password = ?, is_first_login = 1, otp_verified = 0 WHERE id = ?")->execute([$hash, $userId]);
 
+    // Dispatch Reset Notice Email
+    try {
+        if (!empty($target['email'])) {
+            $loginUrl = getPortalBaseUrl() . '/?page=login';
+            $resetHtml = renderAdminPasswordResetNoticeEmail($target['full_name'], $target['username'] ?: $target['email'], 'Chang3Me!', $loginUrl);
+            dispatchDirectEmail($target['email'], "Your Neilos Partner Portal Password Has Been Reset", $resetHtml, "Your temporary password is: Chang3Me! Please log in at {$loginUrl} and change it.", 'users', $userId);
+        }
+    } catch (Throwable $t) {}
+
     auditLog("Reset password for {$target['full_name']}", 'users', $userId);
-    setFlash('success', "Password reset for <strong>" . e($target['full_name']) . "</strong>. Default password: <strong>Chang3Me!</strong>");
+    setFlash('success', "Password reset for <strong>" . e($target['full_name']) . "</strong>. Notification emailed to <strong>" . e($target['email']) . "</strong> (Default password: <strong>Chang3Me!</strong>).");
     header('Location: ' . APP_URL . '/?page=users');
+    exit;
+}
+
+// ------------------------------------------------------------------
+// POST: Resend Welcome Credentials Email
+// ------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'resend_welcome') {
+    verifyCsrf();
+
+    $userId = (int)($_POST['id'] ?? 0);
+    if (!$userId) {
+        setFlash('danger', 'Invalid user ID.');
+        header('Location: ' . APP_URL . '/?page=users');
+        exit;
+    }
+
+    $stmt = $db->prepare("SELECT full_name, username, email, role FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $target = $stmt->fetch();
+    if (!$target || empty($target['email'])) {
+        setFlash('danger', 'User not found or has no email address configured.');
+        header('Location: ' . APP_URL . '/?page=users');
+        exit;
+    }
+
+    $loginUrl = getPortalBaseUrl() . '/?page=login';
+    $welcomeHtml = renderWelcomeCredentialsEmail($target['full_name'], $target['username'] ?: $target['email'], 'Chang3Me!', $target['role'], $loginUrl);
+    $res = dispatchDirectEmail(
+        $target['email'],
+        "Welcome to Neilos Partner Portal — Your Account Credentials",
+        $welcomeHtml,
+        "Welcome {$target['full_name']}! Your temporary password is: Chang3Me! Please log in at {$loginUrl} and change it.",
+        'users',
+        $userId
+    );
+
+    if ($res['success']) {
+        auditLog("Resent welcome credentials email to {$target['full_name']} ({$target['email']})", 'users', $userId);
+        setFlash('success', "Welcome email and credentials successfully sent to <strong>" . e($target['email']) . "</strong>.");
+    } else {
+        setFlash('danger', "Failed to send email to <strong>" . e($target['email']) . "</strong>: " . e($res['message']));
+    }
+
+    header('Location: ' . APP_URL . '/?page=users&action=detail&id=' . $userId);
     exit;
 }
 

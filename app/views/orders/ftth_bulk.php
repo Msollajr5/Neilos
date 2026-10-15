@@ -1,11 +1,11 @@
 <div class="page-header">
   <div class="page-header-left">
-    <div class="page-title">FTTH Bulk Upload</div>
-    <div class="page-subtitle">Batch create multiple FTTH feasibility orders using a CSV spreadsheet</div>
+    <div class="page-title">Bulk Order Upload</div>
+    <div class="page-subtitle">Batch create feasibility orders across all service types (FTTH, FTTB, DIA, Layer 2, BIA, etc.) using a CSV spreadsheet</div>
   </div>
   <div class="page-header-right">
     <a href="<?= APP_URL ?>/?page=ftth_bulk&action=template" class="btn btn-secondary">
-      <?= svgIcon('download') ?> Download CSV Template
+      <?= svgIcon('download') ?> Download Universal CSV Template
     </a>
   </div>
 </div>
@@ -14,7 +14,7 @@
   <!-- Upload Box -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title"><?= svgIcon('upload') ?> Upload FTTH Spreadsheet</div>
+      <div class="card-title"><?= svgIcon('upload') ?> Upload Order Spreadsheet</div>
     </div>
     <div class="card-body">
       <form id="ftthBulkForm" method="POST" enctype="multipart/form-data">
@@ -74,25 +74,25 @@
   <!-- Instructions & Guidelines -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title"><?= svgIcon('info') ?> CSV Columns & Guidelines</div>
+      <div class="card-title"><?= svgIcon('info') ?> CSV Columns &amp; Multi-Service Guidelines</div>
     </div>
     <div class="card-body" style="font-size:0.875rem">
       <ul style="padding-left:1.2rem;line-height:1.7;margin:0">
+        <li><strong>service_type</strong> (Optional): <code>FTTH</code>, <code>FTTB</code>, <code>DIA</code>, <code>Layer 2 ( last mile)</code>, <code>BIA</code>, etc. (Defaults to FTTH if blank)</li>
         <li><strong>customer_name</strong> (Mandatory): Customer or building name</li>
         <li><strong>customer_contact_name</strong> (Mandatory): Contact person full name</li>
         <li><strong>customer_contact_phone</strong> (Mandatory): Contact phone number (e.g. +255 712 345 678)</li>
         <li><strong>customer_contact_email</strong> (Mandatory): Valid contact email address</li>
         <li><strong>customer_location</strong> (Mandatory): Physical address, street, or area</li>
-        <li><strong>partner_id</strong> (Mandatory): Numerical ID of the ordering partner</li>
-        <li><strong>capacity_mbps</strong> (Mandatory): Integer bandwidth (e.g. 10, 20, 50, 100)</li>
+        <li><strong>partner_id</strong> (Mandatory for Admin/KAM): Numerical ID of ordering partner</li>
+        <li><strong>capacity_mbps</strong> (Mandatory): Integer bandwidth (e.g. 10, 20, 30, 50, 100)</li>
         <li><strong>gps_coordinates</strong> (Optional): Lat, Long coordinates (e.g. -6.7835, 39.2685)</li>
-        <li><strong>site_category</strong> (Optional): Residential, Commercial, Enterprise</li>
+        <li><strong>site_category</strong> (Optional): Residential, Commercial Building, Enterprise, Hospitality</li>
         <li><strong>contract_term_months</strong> (Optional): Default is 12</li>
         <li><strong>kam_name</strong> (Optional): Full name of assigned KAM</li>
-        <li><strong>nrc_tzs / mrc_tzs</strong> (Optional): Standard or customized initial amounts in TZS</li>
       </ul>
-      <div style="margin-top:12px;padding:10px;background:#eef6ff;border-radius:6px;color:#1e40af;font-size:0.82rem">
-        <strong>Tip:</strong> Download the template to get a pre-formatted file with sample data. All created orders will start in <strong>Feasibility Review</strong> status.
+      <div style="margin-top:12px;padding:10px;background:var(--surface-2);border-radius:6px;border:1px solid var(--border);font-size:0.82rem;line-height:1.5">
+        <strong>Commercial Rules:</strong> <strong>FTTH</strong> and <strong>DIA</strong> automatically apply pre-defined standard MRC/NRC rates. Other services (<strong>FTTB, Layer 2, BIA, etc.</strong>) initialize with <strong>0.00</strong> standard costs, allowing BSA (NRC) and KAM (MRC) to custom-quote during Feasibility and Commercial review.
       </div>
     </div>
   </div>
@@ -159,7 +159,7 @@
                     $oidInt = (int)$oid;
                     $orderNum = $ordersMap[$oidInt] ?? '';
                     if (!$orderNum) {
-                        $orderNum = 'FR-' . date('ymd', strtotime($u['created_at'])) . '-' . str_pad($oidInt, 3, '0', STR_PAD_LEFT);
+                        $orderNum = 'FR-' . date('ymd', strtotime($u['uploaded_at'])) . '-' . str_pad($oidInt, 3, '0', STR_PAD_LEFT);
                     }
                     // Extract suffix e.g. #002 from FR-260815-002
                     $shortNum = preg_match('/-(\d+)$/', $orderNum, $m) ? ('#' . $m[1]) : ('#' . $orderNum);
@@ -172,7 +172,7 @@
 
                 $batchData = [
                   'id' => (int)$u['id'],
-                  'created_at' => date('d M Y, H:i', strtotime($u['created_at'])),
+                  'created_at' => date('d M Y, H:i', strtotime($u['uploaded_at'])),
                   'uploaded_by' => $u['uploaded_by_name'] ?? 'System',
                   'original_file' => $u['original_file'],
                   'total_rows' => $tot,
@@ -190,10 +190,10 @@
                 </td>
                 <td style="padding:14px 16px;white-space:nowrap">
                   <div style="font-weight:600;font-size:0.88rem;color:var(--text-primary)">
-                    <?= date('d M Y', strtotime($u['created_at'])) ?>
+                    <?= date('d M Y', strtotime($u['uploaded_at'])) ?>
                   </div>
                   <div style="font-size:0.75rem;color:var(--text-muted)">
-                    <?= date('H:i:s', strtotime($u['created_at'])) ?>
+                    <?= date('H:i:s', strtotime($u['uploaded_at'])) ?>
                   </div>
                 </td>
                 <td style="padding:14px 16px">
@@ -490,11 +490,19 @@ function handleFtthCsvSelect(input) {
   const submitBtn = document.getElementById('ftthSubmitBtn');
   const tableWrapper = document.getElementById('stagedCsvTableWrapper');
 
+  const fileSelectGroup = document.getElementById('fileSelectGroup');
+
   if (!input.files || !input.files[0]) {
     if (stagedBox) stagedBox.style.display = 'none';
     if (tableWrapper) tableWrapper.style.display = 'none';
+    if (fileSelectGroup) fileSelectGroup.style.display = '';
     return;
   }
+
+  // Hide the native file-picker row once a file is chosen — the staged
+  // card below becomes the sole visible file representation with its own
+  // View Data / Replace / Delete action set.
+  if (fileSelectGroup) fileSelectGroup.style.display = 'none';
 
   const file = input.files[0];
   if (nameEl) nameEl.textContent = file.name;
@@ -575,12 +583,17 @@ function deleteFtthStagedCsv() {
   const input = document.getElementById('ftthCsvInput');
   if (input) {
     input.value = '';
+    // Dispatching 'change' triggers handleFtthCsvSelect which will
+    // hide the staged card and restore the file-picker row.
     input.dispatchEvent(new Event('change'));
   }
   const stagedBox = document.getElementById('stagedCsvReview');
   if (stagedBox) stagedBox.style.display = 'none';
   const tableWrapper = document.getElementById('stagedCsvTableWrapper');
   if (tableWrapper) tableWrapper.style.display = 'none';
+  // Restore the file-picker row so the user can select a new file.
+  const fileSelectGroup = document.getElementById('fileSelectGroup');
+  if (fileSelectGroup) fileSelectGroup.style.display = '';
   const submitBtn = document.getElementById('ftthSubmitBtn');
   if (submitBtn) {
     submitBtn.disabled = false;

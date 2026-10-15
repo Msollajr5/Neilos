@@ -1,6 +1,20 @@
 Options -Indexes
 RewriteEngine On
 
-# Redirect to public if accessed from root
+# 1. Block access to hidden files and directories (.env, .git, etc.)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+RedirectMatch 403 /\..*
+
+# 2. Block sensitive file extensions
+<FilesMatch "\.(env|sql|log|ini|sh|bak|md|xlsx|csv|yml|yaml|dockerfile)$">
+    Require all denied
+</FilesMatch>
+
+# 3. Deny direct access to internal application directories
+RewriteRule ^(app|database|scripts)/ - [F,L]
+
+# 4. Redirect to public if accessed from root
 RewriteCond %{REQUEST_URI} ^/Neilos/?$
 RewriteRule ^ /Neilos/public/ [L,R=301]

@@ -6,6 +6,13 @@
 define('ROOT_DIR', dirname(__DIR__));
 define('APP_DIR',  ROOT_DIR . '/app');
 
+// Set an explicit, consistent timezone BEFORE any date/time operation.
+// 'Africa/Nairobi' = EAT (UTC+3, no daylight-saving time), matching the
+// MySQL server running on this Windows machine.
+// Without this, PHP uses whatever php.ini says (often UTC on XAMPP), which
+// causes strtotime() to misinterpret DATETIME strings stored in local time.
+date_default_timezone_set('Africa/Nairobi');
+
 // Load core
 require_once APP_DIR . '/config/database.php';
 require_once APP_DIR . '/helpers/auth.php';
@@ -15,6 +22,7 @@ require_once APP_DIR . '/helpers/sla.php';
 require_once APP_DIR . '/helpers/icons.php';
 require_once APP_DIR . '/helpers/notifications.php';
 require_once APP_DIR . '/helpers/workflow.php';
+require_once APP_DIR . '/helpers/migration.php';
 
 // Start session
 startSecureSession();
@@ -22,8 +30,8 @@ startSecureSession();
 // Route
 $page = preg_replace('/[^a-z0-9_]/', '', strtolower($_GET['page'] ?? 'dashboard'));
 
-// Public routes (no login required)
-$publicRoutes = ['login', 'logout'];
+// Public routes (no login required or custom session handling)
+$publicRoutes = ['login', 'logout', 'session_ping', 'forgot_password', 'reset_password'];
 
 if (!in_array($page, $publicRoutes)) {
     requireLogin();
@@ -41,6 +49,7 @@ if (!in_array($page, $publicRoutes)) {
         'dashboard'     => 'dashboard.view',
         'new_order'     => 'orders.create',
         'orders'        => 'orders.view',
+        'closed_orders' => 'orders.view',
         'order_detail'  => 'orders.view',
         'generate_sof'  => 'orders.view',
         'contractor'    => 'contractors.view',
@@ -49,6 +58,7 @@ if (!in_array($page, $publicRoutes)) {
         'reports'       => 'reports.view',
         'partners'      => 'partners.view',
         'contractors'   => 'contractors.manage',
+        'surveys'       => 'surveys.view',
         'users'         => 'users.view',
         'activity_logs' => 'activity_logs.view',
     ];
@@ -63,15 +73,20 @@ $controllerMap = [
     // Auth
     'login'           => 'auth',
     'logout'          => 'auth',
+    'forgot_password' => 'auth',
+    'reset_password'  => 'auth',
     'change_password' => 'auth',
     'otp_verify'      => 'auth',
+    'session_ping'    => 'auth',
     // Core Workflow & Spec Modules
     'dashboard'       => 'dashboard',
     'orders'          => 'orders',
+    'closed_orders'   => 'orders',
     'new_order'       => 'orders',
     'order_detail'    => 'orders',
     'generate_sof'    => 'orders',
     'contractor'      => 'contractor',
+    'surveys'         => 'surveys',
     'kyc'             => 'kyc',
     'sla_tracking'    => 'sla_tracking',
     'reports'         => 'reports',

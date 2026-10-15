@@ -5,20 +5,34 @@
 
 function startSecureSession(): void {
     if (session_status() === PHP_SESSION_NONE) {
-        ini_set('session.cookie_httponly', '1');
-        ini_set('session.cookie_samesite', 'Strict');
+        if (!headers_sent()) {
+            ini_set('session.cookie_httponly', '1');
+            ini_set('session.use_only_cookies', '1');
 
-        $currentSavePath = session_save_path();
-        if (!$currentSavePath || !is_dir($currentSavePath) || !is_writable($currentSavePath)) {
-            $fallbackDir = sys_get_temp_dir();
-            if (is_dir($fallbackDir) && is_writable($fallbackDir)) {
-                session_save_path($fallbackDir);
+            $lifetime = defined('SESSION_LIFETIME') ? SESSION_LIFETIME : 28800;
+            $secure   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+
+            session_set_cookie_params([
+                'lifetime' => $lifetime,
+                'path'     => '/',
+                'domain'   => '',
+                'secure'   => $secure,
+                'httponly' => true,
+                'samesite' => 'Lax'
+            ]);
+
+            $currentSavePath = session_save_path();
+            if (!$currentSavePath || !is_dir($currentSavePath) || !is_writable($currentSavePath)) {
+                $fallbackDir = sys_get_temp_dir();
+                if (is_dir($fallbackDir) && is_writable($fallbackDir)) {
+                    session_save_path($fallbackDir);
+                }
             }
         }
 
         @session_start();
 
-        if (session_status() === PHP_SESSION_NONE) {
+        if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
             $fallbackDir = sys_get_temp_dir();
             session_save_path($fallbackDir);
             @session_start();
@@ -26,30 +40,140 @@ function startSecureSession(): void {
     }
 }
 
+/**
+ * Validate password complexity according to enterprise policy:
+ * - Minimum 8 characters
+ * - At least 1 uppercase letter
+ * - At least 1 lowercase letter
+ * - At least 1 digit
+ * - At least 1 special symbol
+ * - Confirmation match
+ * - Cannot match current password
+ */
+function validatePasswordPolicy(string $newPassword, ?string $currentHash = null, ?string $confirmPassword = null): array {
+    $errors = [];
+    if (strlen($newPassword) < 8) {
+        $errors[] = 'Password must be at least 8 characters long.';
+    }
+    if (!preg_match('/[A-Z]/', $newPassword)) {
+        $errors[] = 'Password must contain at least one uppercase letter (A-Z).';
+    }
+    if (!preg_match('/[a-z]/', $newPassword)) {
+        $errors[] = 'Password must contain at least one lowercase letter (a-z).';
+    }
+    if (!preg_match('/[0-9]/', $newPassword)) {
+        $errors[] = 'Password must contain at least one number (0-9).';
+    }
+    if (!preg_match('/[!@#$%^&*()_+\-=\[\]{};\':"\\\\|,.<>\/?~`]/', $newPassword)) {
+        $errors[] = 'Password must contain at least one special symbol (!@#$%^&* etc.).';
+    }
+    if ($confirmPassword !== null && $newPassword !== $confirmPassword) {
+        $errors[] = 'Passwords do not match.';
+    }
+    if ($currentHash !== null && !empty($newPassword) && password_verify($newPassword, $currentHash)) {
+        $errors[] = 'New password cannot be the same as your current password.';
+    }
+    return $errors;
+}
+
+/**
+ * Check password expiration against corporate 90-day rotation policy.
+ */
+function checkPasswordExpiry(array $user): array {
+    $changedAt = $user['password_changed_at'] ?? null;
+    if (empty($changedAt)) {
+        $changedAt = $user['created_at'] ?? date('Y-m-d H:i:s');
+    }
+    $changedTime = strtotime($changedAt);
+    if ($changedTime === false || $changedTime <= 0) {
+        $changedTime = time();
+    }
+
+    $maxDays  = defined('PASSWORD_EXPIRY_DAYS') ? PASSWORD_EXPIRY_DAYS : 90;
+    $warnDays = defined('PASSWORD_EXPIRY_WARN_DAYS') ? PASSWORD_EXPIRY_WARN_DAYS : 14;
+
+    $ageSeconds = max(0, time() - $changedTime);
+    $daysOld    = (int)floor($ageSeconds / 86400);
+    $daysLeft   = max(0, $maxDays - $daysOld);
+    $isExpired  = ($daysOld >= $maxDays);
+    $isWarn     = (!$isExpired && $daysLeft <= $warnDays);
+
+    return [
+        'expired'             => $isExpired,
+        'warn'                => $isWarn,
+        'days_old'            => $daysOld,
+        'days_left'           => $daysLeft,
+        'password_changed_at' => $changedAt,
+    ];
+}
+
 function requireLogin(): void {
     startSecureSession();
     if (empty($_SESSION['user_id'])) {
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            http_response_code(401);
+            echo json_encode(['status' => 'unauthenticated', 'redirect' => APP_URL . '/?page=login']);
+            exit;
+        }
         header('Location: ' . APP_URL . '/?page=login');
         exit;
     }
-    // Check session freshness
-    if (!empty($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > SESSION_LIFETIME)) {
+
+    $page = $_GET['page'] ?? 'dashboard';
+
+    // 1. Enforce Idle Session Timeout
+    $idleTimeout = defined('SESSION_IDLE_TIMEOUT') ? SESSION_IDLE_TIMEOUT : 900;
+    if (!empty($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $idleTimeout)) {
         session_unset();
         session_destroy();
+
+        if ($page === 'sse') {
+            http_response_code(401);
+            echo "event: session_timeout\ndata: {}\n\n";
+            exit;
+        }
+
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            http_response_code(401);
+            echo json_encode(['status' => 'timeout', 'redirect' => APP_URL . '/?page=login&reason=timeout']);
+            exit;
+        }
+
         header('Location: ' . APP_URL . '/?page=login&reason=timeout');
         exit;
     }
-    $_SESSION['last_activity'] = time();
 
-    // Enforce first-login flow
-    $page = $_GET['page'] ?? 'dashboard';
+    if ($page !== 'sse') {
+        $_SESSION['last_activity'] = time();
+    }
+
+    // 2. Ensure password expiration & first-login status is populated in session
+    if (!isset($_SESSION['password_expired']) || !isset($_SESSION['is_first_login'])) {
+        try {
+            $db = getDB();
+            $stmt = $db->prepare('SELECT password_changed_at, created_at, is_first_login FROM users WHERE id = ?');
+            $stmt->execute([$_SESSION['user_id']]);
+            $u = $stmt->fetch();
+            if ($u) {
+                $_SESSION['is_first_login'] = (bool)$u['is_first_login'];
+                $expiry = checkPasswordExpiry($u);
+                $_SESSION['password_expired']    = $expiry['expired'];
+                $_SESSION['password_warn']       = $expiry['warn'];
+                $_SESSION['password_days_left']  = $expiry['days_left'];
+                $_SESSION['password_changed_at'] = $expiry['password_changed_at'];
+            }
+        } catch (Throwable $e) {}
+    }
+
+    // 3. Enforce first-login flow
     if (!empty($_SESSION['is_first_login']) && !in_array($page, ['change_password', 'logout'])) {
         header('Location: ' . APP_URL . '/?page=change_password');
         exit;
     }
-    // Enforce OTP
-    if (empty($_SESSION['otp_verified']) && !in_array($page, ['otp_verify', 'change_password', 'logout'])) {
-        header('Location: ' . APP_URL . '/?page=otp_verify');
+
+    // 4. Enforce 90-day password rotation policy
+    if (!empty($_SESSION['password_expired']) && !in_array($page, ['change_password', 'logout'])) {
+        header('Location: ' . APP_URL . '/?page=change_password&reason=expired');
         exit;
     }
 }
@@ -74,6 +198,10 @@ function ensurePermissionsSchema(PDO $db): void {
         }
         $done = true;
     } catch (Exception $e) {}
+}
+
+function isLoggedIn(): bool {
+    return !empty($_SESSION['user_id']);
 }
 
 function currentUser(): array {
@@ -108,15 +236,30 @@ function isManagement(): bool {
 }
 
 function isProjectManager(): bool {
-    return ($_SESSION['user_role'] ?? '') === 'Project Manager';
+    $role = $_SESSION['user_role'] ?? '';
+    return $role === 'Project Manager' || $role === 'Project Coordinator';
+}
+
+function isKAM(): bool {
+    return ($_SESSION['user_role'] ?? '') === 'KAM';
+}
+
+function isBSA(): bool {
+    return ($_SESSION['user_role'] ?? '') === 'BSA';
 }
 
 function isFinance(): bool {
-    return ($_SESSION['user_role'] ?? '') === 'Billing';
+    $role = $_SESSION['user_role'] ?? '';
+    return in_array($role, ['Billing', 'Finance'], true);
 }
 
 function isExternalUser(): bool {
     return isPartnerUser() || isContractorUser();
+}
+
+function isKamUser(): bool {
+    $role = $_SESSION['user_role'] ?? '';
+    return $role === 'KAM';
 }
 
 function hasRole(string ...$roles): bool {
@@ -124,20 +267,125 @@ function hasRole(string ...$roles): bool {
     return $role === 'System Admin' || in_array($role, $roles);
 }
 
+function canManageUsdExchangeRate(): bool {
+    $role = $_SESSION['user_role'] ?? '';
+    return in_array($role, ['System Admin', 'Admin', 'Management'], true);
+}
+
+function canViewDashboardFinancials(): bool {
+    $role = $_SESSION['user_role'] ?? '';
+    return !in_array($role, ['Partner', 'Partner User', 'Project Manager', 'BSA', 'Contractor', 'Contractor User', 'KAM'], true);
+}
+
+function canViewDashboardPartnersCard(): bool {
+    $role = $_SESSION['user_role'] ?? '';
+    return !in_array($role, ['Partner', 'Partner User', 'Contractor', 'Contractor User'], true);
+}
+
+function canViewCoverageCheck(): bool {
+    $role = $_SESSION['user_role'] ?? '';
+    return in_array($role, ['Partner', 'Partner User', 'BSA', 'Management', 'KAM', 'Admin', 'System Admin'], true);
+}
+
 function partnerWhere(string $alias = ''): array {
-    if (isPartnerUser() || isContractorUser()) {
+    $partnerId = (int)($_SESSION['partner_id'] ?? 0);
+
+    if (isPartnerUser()) {
+        if ($alias === 'p') {
+            return [
+                'condition' => "p.id = ?",
+                'params'    => [$partnerId],
+            ];
+        }
+        if ($alias === 'pka') {
+            return [
+                'condition' => "pka.partner_id = ?",
+                'params'    => [$partnerId],
+            ];
+        }
+        if ($alias === 'k') {
+            return [
+                'condition' => "k.partner_id = ?",
+                'params'    => [$partnerId],
+            ];
+        }
+        if ($alias === 'o') {
+            return [
+                'condition' => "o.partner_id = ?",
+                'params'    => [$partnerId],
+            ];
+        }
         $col = $alias ? "$alias.partner_id" : 'partner_id';
         return [
             'condition' => "$col = ?",
-            'params'    => [(int)($_SESSION['partner_id'] ?? 0)],
+            'params'    => [$partnerId],
+        ];
+    }
+
+    if (isContractorUser()) {
+        if ($alias === 'p') {
+            return [
+                'condition' => "p.id = ?",
+                'params'    => [$partnerId],
+            ];
+        }
+        if ($alias === 'pka') {
+            return [
+                'condition' => "pka.partner_id = ?",
+                'params'    => [$partnerId],
+            ];
+        }
+        if ($alias === 'k') {
+            return [
+                'condition' => "k.partner_id = ?",
+                'params'    => [$partnerId],
+            ];
+        }
+        if ($alias === 'o') {
+            return [
+                'condition' => "(o.partner_id = ? OR o.id IN (SELECT ca_sub.order_id FROM contractor_assignments ca_sub WHERE ca_sub.contractor_partner_id = ?))",
+                'params'    => [$partnerId, $partnerId],
+            ];
+        }
+        $col = $alias ? "$alias.partner_id" : 'partner_id';
+        return [
+            'condition' => "$col = ?",
+            'params'    => [$partnerId],
+        ];
+    }
+
+    if (isKamUser()) {
+        $kamId   = (int)($_SESSION['user_id'] ?? 0);
+        $kamName = $_SESSION['full_name'] ?? ($_SESSION['username'] ?? '');
+
+        if ($alias === 'p') {
+            return [
+                'condition' => "(p.kam_id = ? OR p.assigned_kam_name = ?)",
+                'params'    => [$kamId, $kamName],
+            ];
+        }
+        if ($alias === 'pka') {
+            return [
+                'condition' => "(pka.partner_id IN (SELECT p_sub.id FROM partners p_sub WHERE p_sub.kam_id = ? OR p_sub.assigned_kam_name = ?))",
+                'params'    => [$kamId, $kamName],
+            ];
+        }
+        if ($alias === 'k') {
+            return [
+                'condition' => "(k.partner_id IN (SELECT p_sub.id FROM partners p_sub WHERE p_sub.kam_id = ? OR p_sub.assigned_kam_name = ?))",
+                'params'    => [$kamId, $kamName],
+            ];
+        }
+        $kamCol = $alias ? "$alias.kam_id" : 'kam_id';
+        $partnerCol = $alias ? "$alias.partner_id" : 'partner_id';
+        return [
+            'condition' => "($kamCol = ? OR $partnerCol IN (SELECT p_sub.id FROM partners p_sub WHERE p_sub.kam_id = ? OR p_sub.assigned_kam_name = ?))",
+            'params'    => [$kamId, $kamId, $kamName],
         ];
     }
     return ['condition' => '1=1', 'params' => []];
 }
 
-/**
- * All available permission keys in the application.
- */
 function getAllPermissionCatalog(): array {
     return [
         'Dashboard' => [
@@ -174,9 +422,6 @@ function getAllPermissionCatalog(): array {
     ];
 }
 
-/**
- * Default permission mappings by Role.
- */
 function getRoleDefaultPermissions(string $role): array {
     return match ($role) {
         'System Admin', 'Admin' => [
@@ -192,28 +437,38 @@ function getRoleDefaultPermissions(string $role): array {
             'partners.view', 'partners.manage', 'contractors.manage', 'users.view', 'users.manage', 'admin.settings', 'activity_logs.view'
         ],
         'KAM' => [
-            'dashboard.view', 'orders.view', 'orders.edit',
+            'dashboard.view', 'orders.view', 'orders.edit', 'orders.approve',
+            'partners.view', 'partners.manage',
             'kyc.view', 'kyc.create', 'sla.view'
         ],
         'BSA' => [
             'dashboard.view', 'orders.view', 'orders.edit',
-            'kyc.view', 'kyc.create', 'sla.view'
+            'sla.view'
         ],
-        'Project Manager' => [
-            'dashboard.view', 'orders.view', 'orders.edit',
-            'contractors.view', 'contractors.assign',
-            'kyc.view', 'kyc.create', 'sla.view'
+        'Project Manager', 'Project Coordinator' => [
+            'dashboard.view', 'orders.create', 'orders.bulk', 'orders.view', 'orders.edit', 'orders.approve',
+            'contractors.view', 'contractors.assign', 'contractors.manage',
+            'surveys.view', 'surveys.assign', 'surveys.manage',
+            'kyc.view', 'kyc.create', 'kyc.approve', 'sla.view',
+            'partners.view', 'partners.manage', 'users.view', 'admin.settings', 'activity_logs.view', 'reports.view'
+        ],
+        'Management' => [
+            'dashboard.view', 'orders.create', 'orders.bulk', 'orders.view', 'orders.edit', 'orders.approve',
+            'contractors.view', 'contractors.manage', 'surveys.view', 'surveys.manage',
+            'kyc.view', 'kyc.create', 'kyc.approve', 'sla.view',
+            'partners.view', 'partners.manage', 'users.view', 'admin.settings', 'activity_logs.view', 'reports.view'
         ],
         'Partner', 'Partner User' => [
             'dashboard.view', 'orders.create', 'orders.bulk', 'orders.view',
-            'kyc.view', 'kyc.approve', 'kyc.reject', 'sla.view'
+            'kyc.view', 'kyc.create', 'sla.view'
         ],
         'Contractor', 'Contractor User' => [
-            'dashboard.view', 'contractors.view',
-            'kyc.view', 'kyc.approve', 'kyc.reject'
+            'dashboard.view', 'contractors.view', 'surveys.view',
+            'kyc.view', 'kyc.create'
         ],
-        'Billing', 'Finance' => [
-            'dashboard.view', 'orders.view', 'orders.approve', 'sla.view', 'kyc.view'
+        'Finance', 'Billing' => [
+            'dashboard.view', 'orders.view', 'orders.edit',
+            'sla.view', 'reports.view'
         ],
         default => [
             'dashboard.view', 'orders.view'
@@ -221,39 +476,53 @@ function getRoleDefaultPermissions(string $role): array {
     };
 }
 
-/**
- * Get resolved array of permission keys for a user.
- * Prefers explicit user permissions JSON, falling back to role defaults.
- */
 function getUserPermissions(?array $user = null): array {
-    if (!$user) {
+    if ($user === null) {
         $user = currentUser();
     }
-    if (!$user || empty($user['id'])) return [];
-
-    if (!empty($user['permissions'])) {
-        $decoded = is_array($user['permissions']) ? $user['permissions'] : json_decode($user['permissions'], true);
-        if (is_array($decoded)) {
-            return $decoded;
-        }
+    if (empty($user['id'])) {
+        return [];
     }
-    return getRoleDefaultPermissions($user['role'] ?? 'User');
+    $raw = $user['permissions'] ?? null;
+    if ($raw === null || $raw === '') {
+        return getRoleDefaultPermissions($user['role'] ?? ($user['user_role'] ?? ''));
+    }
+    if ($raw === '*' || $raw === 'all') {
+        return ['*'];
+    }
+    $decoded = json_decode($raw, true);
+    if (is_array($decoded)) {
+        return $decoded;
+    }
+    return getRoleDefaultPermissions($user['role'] ?? ($user['user_role'] ?? ''));
 }
 
-/**
- * Check if the current user (or specified user) has a given permission key.
- */
 function hasPermission(string $permissionKey, ?array $user = null): bool {
-    if ($permissionKey === 'reports.view' || str_starts_with($permissionKey, 'reports.')) {
-        return false;
-    }
-    if (!$user) {
+    if ($user === null) {
         $user = currentUser();
     }
-    if (!$user || empty($user['id'])) return false;
+    if (empty($user['id'])) {
+        return false;
+    }
 
-    $userRole = $user['role'] ?? '';
+    $userRole = $user['role'] ?? ($user['user_role'] ?? '');
     if (($userRole === 'System Admin' || $userRole === 'Admin') && empty($user['permissions'])) {
+        return true;
+    }
+
+    if ($userRole === 'KAM' && in_array($permissionKey, ['partners.view', 'partners.manage', 'kyc.view', 'kyc.create'], true)) {
+        return true;
+    }
+
+    if (($userRole === 'Partner' || $userRole === 'Partner User') && in_array($permissionKey, ['dashboard.view', 'orders.view', 'orders.create', 'orders.bulk', 'kyc.view', 'kyc.create', 'sla.view'], true)) {
+        return true;
+    }
+
+    if (($userRole === 'Project Manager' || $userRole === 'Project Coordinator') && in_array($permissionKey, ['dashboard.view', 'orders.view', 'orders.create', 'orders.edit', 'orders.bulk', 'orders.approve', 'contractors.view', 'contractors.assign', 'contractors.manage', 'surveys.view', 'surveys.assign', 'surveys.manage', 'kyc.view', 'kyc.create', 'kyc.approve', 'sla.view', 'partners.view', 'partners.manage', 'users.view', 'activity_logs.view', 'reports.view'], true)) {
+        return true;
+    }
+
+    if (($userRole === 'Contractor' || $userRole === 'Contractor User') && in_array($permissionKey, ['dashboard.view', 'contractors.view', 'surveys.view', 'kyc.view', 'kyc.create'], true)) {
         return true;
     }
 
@@ -265,9 +534,6 @@ function hasPermission(string $permissionKey, ?array $user = null): bool {
     return in_array($permissionKey, $perms, true);
 }
 
-/**
- * Enforce permission on backend server-side.
- */
 function requirePermission(string $permissionKey): void {
     requireLogin();
     if (!hasPermission($permissionKey)) {
@@ -297,18 +563,27 @@ function requirePermission(string $permissionKey): void {
 
 function loginUser(array $user): void {
     startSecureSession();
-    session_regenerate_id(true);
-    $_SESSION['user_id']      = $user['id'];
-    $_SESSION['full_name']    = $user['full_name'];
-    $_SESSION['username']     = $user['username'];
-    $_SESSION['email']        = $user['email'];
-    $_SESSION['user_role']    = $user['role'];
-    $_SESSION['partner_id']   = $user['partner_id'];
-    $_SESSION['permissions']  = $user['permissions'] ?? null;
+    if (!headers_sent() && session_status() === PHP_SESSION_ACTIVE) {
+        @session_regenerate_id(true);
+    }
+    $_SESSION['user_id']         = $user['id'];
+    $_SESSION['full_name']       = $user['full_name'];
+    $_SESSION['username']        = $user['username'];
+    $_SESSION['email']           = $user['email'];
+    $_SESSION['user_role']       = $user['role'];
+    $_SESSION['partner_id']      = $user['partner_id'];
+    $_SESSION['permissions']     = $user['permissions'] ?? null;
     $_SESSION['profile_picture'] = $user['profile_picture'] ?? null;
-    $_SESSION['is_first_login'] = (bool)$user['is_first_login'];
-    $_SESSION['otp_verified'] = (bool)$user['otp_verified'];
-    $_SESSION['last_activity'] = time();
+    $_SESSION['is_first_login']  = (bool)$user['is_first_login'];
+    $_SESSION['otp_verified']    = (bool)$user['otp_verified'];
+    $_SESSION['login_time']      = time();
+    $_SESSION['last_activity']   = time();
+
+    $expiry = checkPasswordExpiry($user);
+    $_SESSION['password_expired']    = $expiry['expired'];
+    $_SESSION['password_warn']       = $expiry['warn'];
+    $_SESSION['password_days_left']  = $expiry['days_left'];
+    $_SESSION['password_changed_at'] = $expiry['password_changed_at'];
 }
 
 function logoutUser(): void {
@@ -330,7 +605,5 @@ function auditLog(string $action, string $module = '', int $recordId = 0, string
             $new ?: null,
             $_SERVER['REMOTE_ADDR'] ?? null,
         ]);
-    } catch (Exception $e) {
-        // Non-fatal: don't crash on audit failure
-    }
+    } catch (Exception $e) {}
 }

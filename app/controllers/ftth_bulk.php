@@ -1,14 +1,15 @@
 <?php
 // ============================================================
-// FTTH Bulk Upload Controller
-// Allows Admin/BSA to bulk-import FTTH orders via CSV file
-// CSV columns: customer_name, customer_location, gps_coordinates,
-//   site_category, capacity, contract_term, special_requirements,
-//   partner_name (or partner_id), kam_name
+// Bulk Order Upload Controller
+// Allows Partner/Admin/BSA/Management to bulk-import orders across all service types via CSV
+// CSV columns: service_type, customer_name, customer_contact_name,
+//   customer_contact_phone, customer_contact_email, customer_location,
+//   gps_coordinates, site_category, capacity_mbps, contract_term_months,
+//   special_requirements, partner_id, kam_name
 // ============================================================
 requireLogin();
-if (!hasRole('Partner', 'Partner User', 'Management', 'Admin', 'System Admin') && !isAdmin() && !hasPermission('orders.bulk')) {
-    setFlash('danger','Access denied. Only Partner, Management, and System Admin roles can perform FTTH bulk uploads.');
+if (!hasRole('Partner', 'Partner User', 'Management', 'Admin', 'System Admin', 'BSA', 'Project Manager') && !isAdmin() && !hasPermission('orders.bulk')) {
+    setFlash('danger','Access denied. Only authorized users can perform bulk order uploads.');
     header('Location: ' . APP_URL . '/?page=orders'); exit;
 }
 
@@ -16,17 +17,26 @@ $db   = getDB();
 $user = currentUser();
 
 // ------------------------------------------------------------------
-// GET: Download CSV template
+// GET: Download Universal CSV template with sample rows for all service types
 // ------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'template') {
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="ftth_bulk_upload_template.csv"');
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="bulk_order_upload_template.csv"');
     $out = fopen('php://output', 'w');
     fputcsv($out, [
-        'customer_name','customer_contact_name','customer_contact_phone','customer_contact_email',
-        'customer_location','gps_coordinates','site_category',
-        'capacity_mbps','contract_term_months','special_requirements',
-        'partner_id','kam_name','nrc_tzs','mrc_tzs'
+        'service_type',
+        'customer_name',
+        'customer_contact_name',
+        'customer_contact_phone',
+        'customer_contact_email',
+        'customer_location',
+        'gps_coordinates',
+        'site_category',
+        'capacity_mbps',
+        'contract_term_months',
+        'special_requirements',
+        'partner_id',
+        'kam_name'
     ]);
 
     $firstPartner = $db->query("SELECT id, assigned_kam_name FROM partners ORDER BY id ASC LIMIT 1")->fetch();
@@ -38,11 +48,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'templat
         $sampleKamName = $pStmt->fetchColumn() ?: $sampleKamName;
     }
 
+    // Sample Row 1: FTTH (Pre-defined package & standard costs)
     fputcsv($out, [
-        'Acme Telecom Ltd','John Doe','+255 712 345 678','john.doe@acme.co.tz',
-        'Msasani, Dar es Salaam','−6.7835, 39.2685','Residential',
-        10,12,'', (string)$samplePartnerId, $sampleKamName,'600000','120000'
+        'FTTH', 'Acme Telecom Ltd', 'John Doe', '+255 712 345 678', 'john.doe@acme.co.tz',
+        'Msasani, Dar es Salaam', '-6.7835, 39.2685', 'Residential',
+        30, 12, '', (string)$samplePartnerId, $sampleKamName
     ]);
+
+    // Sample Row 2: FTTB (Custom quote by BSA & KAM)
+    fputcsv($out, [
+        'FTTB', 'Safari Commercial Complex', 'Jane Smith', '+255 754 111 222', 'jane@safari.co.tz',
+        'City Centre, Dar es Salaam', '-6.8160, 39.2800', 'Commercial Building',
+        50, 12, '', (string)$samplePartnerId, $sampleKamName
+    ]);
+
+    // Sample Row 3: Layer 2 ( last mile) (Custom quote by BSA & KAM)
+    fputcsv($out, [
+        'Layer 2 ( last mile)', 'Apex Financial HQ', 'Amani Juma', '+255 689 333 444', 'amani@apex.co.tz',
+        'Mikocheni, Dar es Salaam', '-6.7620, 39.2480', 'Enterprise',
+        100, 24, 'Dual fiber route requested', (string)$samplePartnerId, $sampleKamName
+    ]);
+
+    // Sample Row 4: DIA (Dedicated Internet Access)
+    fputcsv($out, [
+        'DIA', 'Grand Palace Hotel', 'Fatma Said', '+255 777 555 666', 'fatma@grandpalace.co.tz',
+        'Posta, Dar es Salaam', '-6.8120, 39.2890', 'Hospitality',
+        50, 12, 'Public IP /29 block', (string)$samplePartnerId, $sampleKamName
+    ]);
+
     fclose($out);
     exit;
 }
@@ -111,7 +144,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $handle    = fopen($tmpFile, 'r');
 
     // Read header row
-    $header = array_map('trim', fgetcsv($handle));
+    $rawHeader = fgetcsv($handle);
+    if (!$rawHeader) {
+        setFlash('danger', 'The uploaded CSV file is empty.');
+        header('Location: ' . APP_URL . '/?page=ftth_bulk'); exit;
+    }
+
+    // Clean BOM and lowercase headers
+    $header = array_map(function($h) {
+        $h = preg_replace('/^[\xEF\xBB\xBF\xFE\xFF]+/', '', trim($h));
+        return strtolower($h);
+    }, $rawHeader);
+
     $required = [
         'customer_name',
         'customer_contact_name',
@@ -125,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $required[] = 'partner_id';
     }
 
-    $missing  = array_diff($required, $header);
+    $missing = array_diff($required, $header);
     if ($missing) {
         setFlash('danger', 'CSV is missing required columns: ' . implode(', ', $missing));
         header('Location: ' . APP_URL . '/?page=ftth_bulk'); exit;
@@ -137,9 +181,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $errors      = [];
     $createdIds  = [];
 
+    // Fetch valid service types from DB for normalization
+    $stList = $db->query("SELECT name FROM service_types")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    $knownServiceTypes = [];
+    foreach ($stList as $sName) {
+        $knownServiceTypes[strtolower(trim($sName))] = $sName;
+    }
+
     while (($row = fgetcsv($handle)) !== false) {
         $totalRows++;
         $data = array_combine($header, array_pad($row, count($header), ''));
+
+        $rawServiceType = trim($data['service_type'] ?? '');
+        $serviceType    = 'FTTH';
+        if ($rawServiceType) {
+            $normKey = strtolower($rawServiceType);
+            if (isset($knownServiceTypes[$normKey])) {
+                $serviceType = $knownServiceTypes[$normKey];
+            } else {
+                // Match common aliases
+                if (str_contains($normKey, 'fttb')) {
+                    $serviceType = 'FTTB';
+                } elseif (str_contains($normKey, 'layer 2') || str_contains($normKey, 'l2')) {
+                    $serviceType = 'Layer 2 ( last mile)';
+                } elseif (str_contains($normKey, 'dia')) {
+                    $serviceType = 'DIA';
+                } elseif (str_contains($normKey, 'bia')) {
+                    $serviceType = 'BIA';
+                } elseif (str_contains($normKey, 'remote')) {
+                    $serviceType = 'Remote Hands Only';
+                } else {
+                    $serviceType = $rawServiceType;
+                }
+            }
+        }
 
         $customerName  = trim($data['customer_name'] ?? '');
         $contactName   = trim($data['customer_contact_name'] ?? '');
@@ -178,6 +253,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             continue;
         }
 
+        if (isKamUser() && (int)($partner['kam_id'] ?? 0) !== (int)$user['id'] && ($partner['assigned_kam_name'] ?? '') !== $user['full_name']) {
+            $errors[] = "Row $totalRows: Partner ID $partnerId is not registered in your KAM portfolio.";
+            $errorRows++;
+            continue;
+        }
+
         // Resolve KAM
         $kamName = trim($data['kam_name'] ?? '') ?: ($partner['assigned_kam_name'] ?? '');
         $kamId   = $partner['kam_id'] ?? null;
@@ -187,36 +268,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $kamId = $ks->fetchColumn() ?: $kamId;
         }
 
-        // Parse TZS amounts if provided
-        $nrcTzs = 0.0;
-        $mrcTzs = 0.0;
+        // Calculate standard commercials accurately per service type
+        $commercials = calculateCommercials([
+            'service_type' => $serviceType,
+            'bandwidth'    => $capacity,
+            'fttx_package' => $serviceType === 'FTTH' ? "FTTH-$capacity" : '',
+            'dia_package'  => $serviceType === 'DIA' ? "DIA-$capacity" : '',
+        ]);
+
+        $stdNrc = (float)($commercials['base_nrc_usd'] ?? 0.0);
+        $stdMrc = (float)($commercials['base_mrc'] ?? 0.0);
+
+        // Allow explicit override if provided in CSV
         if (!empty($data['nrc_tzs'])) {
             try {
-                $nrcTzs = (float)parseTZSInput($data['nrc_tzs'], true, true, MAX_NRC_AMOUNT, "Row $totalRows NRC");
-            } catch (RuntimeException $e) {
-                $errors[] = $e->getMessage();
-                $errorRows++;
-                continue;
-            }
+                $stdNrc = (float)parseTZSInput($data['nrc_tzs'], true, true, MAX_NRC_AMOUNT, "Row $totalRows NRC");
+            } catch (RuntimeException $e) {}
         }
         if (!empty($data['mrc_tzs'])) {
             try {
-                $mrcTzs = (float)parseTZSInput($data['mrc_tzs'], true, true, MAX_MRC_AMOUNT, "Row $totalRows MRC");
-            } catch (RuntimeException $e) {
-                $errors[] = $e->getMessage();
-                $errorRows++;
-                continue;
-            }
+                $stdMrc = (float)parseTZSInput($data['mrc_tzs'], true, true, MAX_MRC_AMOUNT, "Row $totalRows MRC");
+            } catch (RuntimeException $e) {}
         }
 
+        $vatOnNrc = round($stdNrc * VAT_RATE, 2);
+        $totalNrc = round($stdNrc + $vatOnNrc, 2);
+        $vatOnMrc = round($stdMrc * VAT_RATE, 2);
+        $totalMrc = round($stdMrc + $vatOnMrc, 2);
+
         try {
-            $orderNum = generateOrderNumber();
+            $orderNum = generateOrderNumber($partnerId, $serviceType);
             $inserted = false; $attempts = 0;
+            $lastBulkError = null;
             while (!$inserted && $attempts < 5) {
                 $attempts++;
                 try {
                     $db->prepare("INSERT INTO orders (
-                        order_number, partner_id, kam_id, assigned_kam_name,
+                        order_number, partner_id, user_id, kam_id, assigned_kam_name,
                         customer_name, customer_contact_name, customer_contact_phone, customer_contact_email,
                         customer_location, gps_coordinates, site_category,
                         service_type, bandwidth, contract_term,
@@ -226,32 +314,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         vat_on_mrc, total_mrc_incl_vat,
                         usd_tzs_rate, mrc_currency,
                         status, created_by
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute([
-                        $orderNum, $partnerId, $kamId, $kamName,
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute([
+                        $orderNum, $partnerId, $user['id'], $kamId, $kamName,
                         $customerName, $contactName, $contactPhone, $contactEmail,
                         $customerLoc,
                         trim($data['gps_coordinates'] ?? ''),
                         trim($data['site_category'] ?? '') ?: null,
-                        'FTTH', $capacity,
+                        $serviceType, $capacity,
                         !empty($data['contract_term_months']) ? ((int)$data['contract_term_months'] . ' Months') : '12 Months',
                         trim($data['special_requirements'] ?? '') ?: null,
-                        $nrcTzs, $mrcTzs, $nrcTzs, $mrcTzs,
-                        $nrcTzs, round($nrcTzs * 0.18, 2), round($nrcTzs * 1.18, 2),
-                        round($mrcTzs * 0.18, 2), round($mrcTzs * 1.18, 2),
-                        1, 'TZS',
+                        $stdNrc, $stdMrc, $stdNrc, $stdMrc,
+                        $stdNrc, $vatOnNrc, $totalNrc,
+                        $vatOnMrc, $totalMrc,
+                        USD_TZS_RATE, 'USD',
                         'Feasibility Review', $user['id']
                     ]);
                     $inserted = true;
                 } catch (PDOException $e) {
-                    if ($e->getCode() == 23000 || str_contains($e->getMessage(), 'Duplicate entry')) {
-                        $orderNum = generateOrderNumber();
+                    $lastBulkError = $e;
+                    if (($e->errorInfo[1] ?? 0) == 1062 || str_contains($e->getMessage(), 'Duplicate entry')) {
+                        $orderNum = generateOrderNumber($partnerId, $serviceType);
                     } else { throw $e; }
                 }
             }
 
             $newOrderId = (int)$db->lastInsertId();
+            if (!$inserted || !$newOrderId) {
+                throw ($lastBulkError ?: new Exception("Failed to insert bulk order for row $totalRows."));
+            }
             $db->prepare("INSERT INTO order_timeline (order_id, status, note, changed_by) VALUES (?,?,?,?)")
-               ->execute([$newOrderId, 'Feasibility Review', "Order created via FTTH bulk upload by {$user['full_name']}.", $user['id']]);
+               ->execute([$newOrderId, 'Feasibility Review', "Order created via bulk upload ({$serviceType}) by {$user['full_name']}.", $user['id']]);
 
             $createdIds[] = $newOrderId;
             $successRows++;
@@ -266,12 +358,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $db->prepare("INSERT INTO ftth_bulk_uploads (uploaded_by, original_file, total_rows, success_rows, error_rows, errors_json, created_orders) VALUES (?,?,?,?,?,?,?)")
        ->execute([$user['id'], $origFile, $totalRows, $successRows, $errorRows, json_encode($errors), implode(',', $createdIds)]);
 
-    auditLog("FTTH bulk upload: $successRows created, $errorRows errors from $origFile", 'ftth_bulk_uploads', (int)$db->lastInsertId());
+    auditLog("Bulk order upload: $successRows created, $errorRows errors from $origFile", 'ftth_bulk_uploads', (int)$db->lastInsertId());
 
     if ($errorRows > 0) {
         setFlash('warning', "Bulk upload complete: <strong>$successRows</strong> orders created, <strong>$errorRows</strong> rows had errors.");
     } else {
-        setFlash('success', "Bulk upload complete: <strong>$successRows</strong> FTTH orders created successfully.");
+        setFlash('success', "Bulk upload complete: <strong>$successRows</strong> orders created successfully across all service types.");
     }
     header('Location: ' . APP_URL . '/?page=ftth_bulk&result=done');
     exit;
@@ -286,7 +378,7 @@ if (isPartnerUser()) {
         FROM ftth_bulk_uploads fbu
         LEFT JOIN users u ON fbu.uploaded_by = u.id
         WHERE fbu.uploaded_by = ?
-        ORDER BY fbu.created_at DESC LIMIT 20
+        ORDER BY fbu.id DESC LIMIT 20
     ");
     $recentUploads->execute([$user['id']]);
 } else {
@@ -294,7 +386,7 @@ if (isPartnerUser()) {
         SELECT fbu.*, u.full_name AS uploaded_by_name
         FROM ftth_bulk_uploads fbu
         LEFT JOIN users u ON fbu.uploaded_by = u.id
-        ORDER BY fbu.created_at DESC LIMIT 20
+        ORDER BY fbu.id DESC LIMIT 20
     ");
     $recentUploads->execute();
 }
@@ -318,8 +410,7 @@ if (!empty($allOrderIds)) {
     $ordersMap = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 }
 
-
-$pageTitle = 'FTTH Bulk Upload';
+$pageTitle = 'Bulk Order Upload';
 include APP_DIR . '/views/layout/header.php';
 include APP_DIR . '/views/orders/ftth_bulk.php';
 include APP_DIR . '/views/layout/footer.php';

@@ -6,6 +6,11 @@
   <div class="page-header-actions">
     <a href="<?= APP_URL ?>/?page=users" class="btn btn-secondary"><?= svgIcon('list') ?> All Users</a>
     <a href="<?= APP_URL ?>/?page=users&action=edit&id=<?= $profile['id'] ?>" class="btn btn-primary"><?= svgIcon('edit') ?> Edit User</a>
+    <form method="POST" action="<?= APP_URL ?>/?page=users&action=resend_welcome" style="display:inline">
+      <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
+      <input type="hidden" name="id" value="<?= $profile['id'] ?>">
+      <button type="submit" class="btn btn-secondary"><?= svgIcon('mail') ?> Resend Credentials Email</button>
+    </form>
     <form method="POST" action="<?= APP_URL ?>/?page=users&action=reset_password" style="display:inline" data-confirm="Reset password for <?= e($profile['full_name']) ?> to Chang3Me!?">
       <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
       <input type="hidden" name="id" value="<?= $profile['id'] ?>">

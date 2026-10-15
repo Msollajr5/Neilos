@@ -57,45 +57,95 @@ $exportUrl = APP_URL . '/?' . http_build_query($exportParams);
   </div>
 </div>
 
-<!-- Filter Bar -->
-<div class="card mb-20">
-  <div class="card-body" style="padding:16px 22px">
-    <form method="GET" class="filter-bar" style="flex-wrap:wrap;gap:12px">
+<!-- Filter Card (Exact Contractors Appearance) -->
+<div class="card mb-20" style="margin-bottom:20px">
+  <div class="card-body" style="padding:16px">
+    <form method="GET" action="<?= APP_URL ?>/" style="display:flex;flex-direction:column;gap:12px">
       <input type="hidden" name="page" value="activity_logs">
-      
-      <div class="search-box" style="flex:1;min-width:220px">
-        <?= svgIcon('search') ?>
-        <input type="text" name="q" placeholder="Search action, user, IP..." value="<?= e($filterSearch) ?>">
+
+      <!-- Row 1: Period Presets + Custom Date Range -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:0.82rem;font-weight:600;color:var(--text-secondary);margin-right:4px">Period:</span>
+          <?php
+            $actPresets = [
+              'all'        => 'All Time',
+              'today'      => 'Today',
+              'this_month' => 'This Month',
+              'last_month' => 'Last Month',
+              'this_year'  => 'This Year',
+            ];
+            $curActPreset = $filterPreset ?: 'all';
+          ?>
+          <?php foreach ($actPresets as $pKey => $pLabel): ?>
+            <?php
+              $pParams = $_GET;
+              $pParams['page'] = 'activity_logs';
+              $pParams['preset'] = $pKey;
+              unset($pParams['start_date'], $pParams['end_date'], $pParams['date_from'], $pParams['date_to'], $pParams['p']);
+            ?>
+            <a href="?<?= http_build_query($pParams) ?>"
+               class="btn btn-sm <?= ($curActPreset === $pKey && !$filterDateFrom && !$filterDateTo) ? 'btn-primary' : 'btn-secondary' ?>"
+               style="font-size:0.78rem;padding:4px 10px">
+              <?= $pLabel ?>
+            </a>
+          <?php endforeach; ?>
+        </div>
+
+        <!-- Custom Date Range -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Custom:</span>
+          <input type="date" name="start_date" class="form-control" style="font-size:0.8rem;padding:4px 8px;width:auto;height:32px" value="<?= e($filterDateFrom) ?>" placeholder="From">
+          <span style="color:var(--text-muted)">to</span>
+          <input type="date" name="end_date" class="form-control" style="font-size:0.8rem;padding:4px 8px;width:auto;height:32px" value="<?= e($filterDateTo) ?>" placeholder="To">
+        </div>
       </div>
 
-      <select name="user_id" class="form-control" style="width:auto;min-width:180px" onchange="this.form.submit()">
-        <option value="">All Users</option>
-        <?php foreach ($usersList as $u): ?>
-        <option value="<?= $u['id'] ?>" <?= $filterUser === (int)$u['id'] ? 'selected' : '' ?>>
-          <?= e($u['full_name']) ?> (<?= e($u['username']) ?>)
-        </option>
-        <?php endforeach; ?>
-      </select>
+      <!-- Row 2: Search, User, Module & Buttons -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <!-- Search Box -->
+        <div style="flex:2;min-width:220px">
+          <div class="search-box" style="width:100%">
+            <?= svgIcon('search') ?>
+            <input type="text" name="q" placeholder="Search action, user, IP..." value="<?= e($filterSearch) ?>">
+          </div>
+        </div>
 
-      <select name="module" class="form-control" style="width:auto;min-width:150px" onchange="this.form.submit()">
-        <option value="">All Modules</option>
-        <?php foreach ($modulesList as $m): ?>
-        <option value="<?= e($m) ?>" <?= $filterModule === $m ? 'selected' : '' ?>>
-          <?= e(ucfirst(str_replace('_', ' ', $m))) ?>
-        </option>
-        <?php endforeach; ?>
-      </select>
+        <!-- User Dropdown -->
+        <div style="flex:1;min-width:160px">
+          <select name="user_id" class="form-control" style="font-size:0.85rem">
+            <option value="">All Users</option>
+            <?php foreach ($usersList as $u): ?>
+            <option value="<?= $u['id'] ?>" <?= $filterUser === (int)$u['id'] ? 'selected' : '' ?>>
+              <?= e($u['full_name']) ?> (<?= e($u['username']) ?>)
+            </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
 
-      <div style="display:flex;align-items:center;gap:6px">
-        <input type="date" name="date_from" class="form-control" value="<?= e($filterDateFrom) ?>" title="From Date" onchange="this.form.submit()">
-        <span style="color:var(--text-muted);font-size:.8rem">to</span>
-        <input type="date" name="date_to" class="form-control" value="<?= e($filterDateTo) ?>" title="To Date" onchange="this.form.submit()">
-      </div>
+        <!-- Module Dropdown -->
+        <div style="flex:1;min-width:140px">
+          <select name="module" class="form-control" style="font-size:0.85rem">
+            <option value="">All Modules</option>
+            <?php foreach ($modulesList as $m): ?>
+            <option value="<?= e($m) ?>" <?= $filterModule === $m ? 'selected' : '' ?>>
+              <?= e(ucfirst(str_replace('_', ' ', $m))) ?>
+            </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
 
-      <div style="display:flex;gap:8px">
-        <button type="submit" class="btn btn-secondary btn-sm"><?= svgIcon('filter') ?> Filter</button>
-        <a href="<?= APP_URL ?>/?page=activity_logs" class="btn btn-secondary btn-sm">Clear</a>
-        <a href="<?= $exportUrl ?>" class="btn btn-outline btn-sm"><?= svgIcon('download') ?> Export CSV</a>
+        <button type="submit" class="btn btn-primary btn-sm" style="height:38px;padding:0 16px">
+          <?= svgIcon('filter') ?> Filter
+        </button>
+        <?php if ($filterDateFrom || $filterDateTo || ($filterPreset !== '' && $filterPreset !== 'all') || $filterSearch || $filterUser || $filterModule): ?>
+        <a href="<?= APP_URL ?>/?page=activity_logs" class="btn btn-secondary btn-sm" style="height:38px;padding:0 14px;display:inline-flex;align-items:center">
+          Clear
+        </a>
+        <?php endif; ?>
+        <a href="<?= $exportUrl ?>" class="btn btn-outline btn-sm" style="height:38px;padding:0 14px;display:inline-flex;align-items:center">
+          <?= svgIcon('download') ?> Export CSV
+        </a>
       </div>
     </form>
   </div>

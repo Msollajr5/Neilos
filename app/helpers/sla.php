@@ -94,16 +94,25 @@ function slaBadgeClass(string $status): string {
  */
 function checkUatAutoAccept(PDO $db): int {
     try {
-        $stmt = $db->query("SELECT * FROM orders WHERE status = 'UAT' AND uat_deadline IS NOT NULL AND uat_deadline <= NOW()");
+        $stmt = $db->query("SELECT o.*, p.partner_type, p.partner_category FROM orders o JOIN partners p ON o.partner_id = p.id WHERE o.status = 'UAT' AND o.uat_deadline IS NOT NULL AND o.uat_deadline <= NOW()");
         if (!$stmt) return 0;
         $expiredOrders = $stmt->fetchAll();
         $autoAcceptedCount = 0;
 
         foreach ($expiredOrders as $order) {
+            $isEnterprise = (
+                ($order['partner_category'] ?? '') === 'Enterprise Client' ||
+                ($order['partner_type'] ?? '') === 'Enterprise' ||
+                ($order['partner_type'] ?? '') === 'Government'
+            );
+            if ($isEnterprise) {
+                // Enterprise orders require explicit UAT form review and acceptance by KAM
+                continue;
+            }
             $orderId = (int)$order['id'];
             $today   = date('Y-m-d');
 
-            $db->prepare("UPDATE orders SET status = 'Closed', closed_date = ?, billing_start_date = ?, activation_date = ?, uat_accepted_at = NOW(), updated_at = NOW() WHERE id = ? AND status = 'UAT'")
+            $db->prepare("UPDATE orders SET status = 'Closed', closed_date = ?, billing_start_date = ?, activation_date = ?, is_active = 1, uat_accepted_at = NOW(), updated_at = NOW() WHERE id = ? AND status = 'UAT'")
                ->execute([$today, $today, $today, $orderId]);
 
             $db->prepare("INSERT INTO order_timeline (order_id, status, note, changed_by) VALUES (?,?,?,NULL)")
@@ -121,7 +130,14 @@ function checkUatAutoAccept(PDO $db): int {
                     $circuitId, $order['bandwidth'] ?: ($order['fttx_package'] ?? ''), $order['customer_location'] ?? '', $order['building_name'] ?? '',
                     $order['kam_id'] ?? null, $today, $today, 'Active', 'Online'
                 ]);
-                $db->prepare("UPDATE orders SET service_id = ?, circuit_id = ? WHERE id = ? AND service_id IS NULL")
+                try {
+                    $db->exec("ALTER TABLE orders DROP FOREIGN KEY orders_ibfk_3");
+                } catch (Throwable $e) {}
+                try {
+                    $db->exec("ALTER TABLE orders MODIFY COLUMN service_id VARCHAR(100) NULL");
+                } catch (Throwable $e) {}
+
+                $db->prepare("UPDATE orders SET service_id = ?, circuit_id = ? WHERE id = ?")
                    ->execute([$serviceId, $circuitId, $orderId]);
             }
 
@@ -154,8 +170,8 @@ function getSlaStageConfig(): array {
             'key'             => 'commercial',
             'name'            => 'Commercial & Mgmt Approval',
             'short_name'      => 'Commercial & Approval',
-            'target_hours'    => 48,
-            'target_seconds'  => 48 * 3600,
+            'target_hours'    => 24,
+            'target_seconds'  => 24 * 3600,
             'statuses'        => ['Await Commercial Approval', 'Management Approval'],
             'next_statuses'   => ['Pending SOF', 'SOF Review', 'Installation', 'Testing', 'UAT', 'Closed', 'Not Feasible', 'Cancelled'],
         ],
@@ -190,34 +206,44 @@ function getSlaStageConfig(): array {
 }
 
 /**
+ * Safe strtotime() wrapper: returns null instead of false on parse failure.
+ * Centralise all timestamp parsing through this so callers never get 0 or false.
+ */
+function safeTs(?string $datetime): ?int {
+    if (empty($datetime)) return null;
+    $ts = strtotime($datetime);
+    return ($ts === false || $ts <= 0) ? null : $ts;
+}
+
+/**
  * Format a duration in seconds into clean human-readable string (e.g. "2 days 4 hrs 30 min").
+ *
+ * Uses floor() — NOT round() — so 59m 50s shows as "59 min" (never rounded up
+ * to "1 hr") and the display exactly matches the underlying seconds-based
+ * SLA compliance check.
  */
 function formatSlaDuration(?int $seconds, bool $isOngoing = false): string {
     if ($seconds === null || $seconds < 0) {
         return '—';
     }
-    
-    $minutes = (int)round($seconds / 60);
+
+    // floor ensures we never show more time than has actually elapsed
+    $minutes = (int)floor($seconds / 60);
     if ($minutes < 1) {
+        // < 60 seconds — keep the (ongoing) suffix if applicable
         return '< 1 min' . ($isOngoing ? ' (ongoing)' : '');
     }
-    
-    $days = (int)floor($minutes / (24 * 60));
+
+    $days         = (int)floor($minutes / (24 * 60));
     $remainingMin = $minutes % (24 * 60);
-    $hours = (int)floor($remainingMin / 60);
-    $mins = $remainingMin % 60;
-    
+    $hours        = (int)floor($remainingMin / 60);
+    $mins         = $remainingMin % 60;
+
     $parts = [];
-    if ($days > 0) {
-        $parts[] = $days === 1 ? '1 day' : "$days days";
-    }
-    if ($hours > 0) {
-        $parts[] = $hours === 1 ? '1 hr' : "$hours hrs";
-    }
-    if ($mins > 0 || empty($parts)) {
-        $parts[] = "$mins min";
-    }
-    
+    if ($days  > 0) { $parts[] = $days  === 1 ? '1 day'  : "$days days"; }
+    if ($hours > 0) { $parts[] = $hours === 1 ? '1 hr'   : "$hours hrs"; }
+    if ($mins  > 0 || empty($parts)) { $parts[] = "$mins min"; }
+
     $formatted = implode(' ', $parts);
     return $isOngoing ? "$formatted (ongoing)" : $formatted;
 }
@@ -228,14 +254,16 @@ function formatSlaDuration(?int $seconds, bool $isOngoing = false): string {
 function computeOrderTimelineStages(array $order, array $timeline): array {
     $now = time();
     $config = getSlaStageConfig();
-    $createdTs = !empty($order['created_at']) ? strtotime($order['created_at']) : $now;
+    $createdTs = safeTs($order['created_at'] ?? null) ?? $now;
     $currentStatus = $order['status'] ?? 'Feasibility Review';
     $isClosed = in_array($currentStatus, ['Closed', 'Not Feasible', 'Cancelled']);
 
     // Sort timeline chronologically
     usort($timeline, function($a, $b) {
-        $tA = strtotime($a['changed_at'] ?? $a['created_at'] ?? '');
-        $tB = strtotime($b['changed_at'] ?? $b['created_at'] ?? '');
+        $tA = strtotime($a['changed_at'] ?? '');
+        $tB = strtotime($b['changed_at'] ?? '');
+        $tA = ($tA === false) ? 0 : $tA;
+        $tB = ($tB === false) ? 0 : $tB;
         if ($tA === $tB) {
             return ($a['id'] ?? 0) <=> ($b['id'] ?? 0);
         }
@@ -249,7 +277,7 @@ function computeOrderTimelineStages(array $order, array $timeline): array {
 
     foreach ($timeline as $t) {
         $st = $t['status'] ?? '';
-        $ts = !empty($t['changed_at']) ? strtotime($t['changed_at']) : (!empty($t['created_at']) ? strtotime($t['created_at']) : null);
+        $ts = safeTs($t['changed_at'] ?? null);
         if ($st && $ts) {
             $statusTransitions[] = [
                 'status'     => $st,
@@ -260,18 +288,18 @@ function computeOrderTimelineStages(array $order, array $timeline): array {
 
     // Helper: find earliest timestamp entering any given status
     $findEntryTs = function(array $targetStatuses) use ($statusTransitions, $createdTs, $currentStatus): ?int {
-        // If initial status is in targetStatuses, entry is createdTs
+        // If Feasibility Review is a target, the order's creation time is the entry point
         if (in_array('Feasibility Review', $targetStatuses)) {
             return $createdTs;
         }
+        // Find the earliest recorded transition into any target status
         foreach ($statusTransitions as $trans) {
             if (in_array($trans['status'], $targetStatuses)) {
                 return $trans['changed_at'];
             }
         }
-        if (in_array($currentStatus, $targetStatuses)) {
-            return $createdTs;
-        }
+        // No recorded transition found — do NOT guess with createdTs;
+        // return null so the stage is correctly marked as unevaluated.
         return null;
     };
 
@@ -291,11 +319,12 @@ function computeOrderTimelineStages(array $order, array $timeline): array {
     $totalStageBreaches = 0;
     $breachedStageNames = [];
 
-    // Stage 1: BSA Feasibility Review
+    // Stage 1: BSA Feasibility Review — entry is always order creation time
     $s1Entry = $createdTs;
     $s1Exit  = $findExitTs($config['feasibility']['next_statuses'], $s1Entry);
-    if (!$s1Exit && !in_array($currentStatus, $config['feasibility']['statuses']) && !empty($order['bsa_reviewed_at'])) {
-        $s1Exit = strtotime($order['bsa_reviewed_at']);
+    if (!$s1Exit && !in_array($currentStatus, $config['feasibility']['statuses'])) {
+        // Fallback: use bsa_reviewed_at if available (handles orders without a full timeline)
+        $s1Exit = safeTs($order['bsa_reviewed_at'] ?? null);
     }
     $s1Ongoing = ($s1Exit === null && in_array($currentStatus, $config['feasibility']['statuses']));
     $s1EndTs   = $s1Exit ?: ($s1Ongoing ? $now : null);
@@ -324,14 +353,18 @@ function computeOrderTimelineStages(array $order, array $timeline): array {
 
     // Stage 2: Commercial & Management Approval
     $s2Entry = $findEntryTs($config['commercial']['statuses']);
-    if (!$s2Entry && (in_array($currentStatus, array_merge($config['commercial']['statuses'], $config['commercial']['next_statuses'])))) {
+    // Only fall back when the order IS currently sitting in this stage but has no timeline entry
+    // (data-inconsistency recovery). Do NOT trigger on next_statuses — that would assign an entry
+    // equal to the previous stage's exit, making $findExitTs find the same timestamp as exit,
+    // producing a phantom zero-second duration for orders that simply skipped this stage.
+    if (!$s2Entry && in_array($currentStatus, $config['commercial']['statuses'])) {
         $s2Entry = $s1Exit ?: $createdTs;
     }
     $s2Evaluated = ($s2Entry !== null);
     $s2Exit  = $s2Evaluated ? $findExitTs($config['commercial']['next_statuses'], $s2Entry) : null;
     if ($s2Evaluated && !$s2Exit && !in_array($currentStatus, $config['commercial']['statuses'])) {
-        if (!empty($order['management_approved_at'])) $s2Exit = strtotime($order['management_approved_at']);
-        elseif (!empty($order['kam_approved_at'])) $s2Exit = strtotime($order['kam_approved_at']);
+        $s2Exit = safeTs($order['management_approved_at'] ?? null)
+               ?? safeTs($order['kam_approved_at'] ?? null);
     }
     $s2Ongoing = ($s2Evaluated && $s2Exit === null && in_array($currentStatus, $config['commercial']['statuses']));
     $s2EndTs   = $s2Exit ?: ($s2Ongoing ? $now : null);
@@ -360,14 +393,15 @@ function computeOrderTimelineStages(array $order, array $timeline): array {
 
     // Stage 3: SOF & Contract Execution
     $s3Entry = $findEntryTs($config['sof']['statuses']);
-    if (!$s3Entry && (in_array($currentStatus, array_merge($config['sof']['statuses'], $config['sof']['next_statuses'])))) {
+    // Same guard as stage 2: only recover from data-inconsistency when currently IN this stage
+    if (!$s3Entry && in_array($currentStatus, $config['sof']['statuses'])) {
         $s3Entry = $s2Exit ?: ($s1Exit ?: $createdTs);
     }
     $s3Evaluated = ($s3Entry !== null);
     $s3Exit  = $s3Evaluated ? $findExitTs($config['sof']['next_statuses'], $s3Entry) : null;
     if ($s3Evaluated && !$s3Exit && !in_array($currentStatus, $config['sof']['statuses'])) {
-        if (!empty($order['countersigned_sof_at'])) $s3Exit = strtotime($order['countersigned_sof_at']);
-        elseif (!empty($order['sof_uploaded_at'])) $s3Exit = strtotime($order['sof_uploaded_at']);
+        $s3Exit = safeTs($order['countersigned_sof_at'] ?? null)
+               ?? safeTs($order['sof_uploaded_at'] ?? null);
     }
     $s3Ongoing = ($s3Evaluated && $s3Exit === null && in_array($currentStatus, $config['sof']['statuses']));
     $s3EndTs   = $s3Exit ?: ($s3Ongoing ? $now : null);
@@ -396,13 +430,14 @@ function computeOrderTimelineStages(array $order, array $timeline): array {
 
     // Stage 4: Installation & Delivery
     $s4Entry = $findEntryTs($config['installation']['statuses']);
-    if (!$s4Entry && (in_array($currentStatus, array_merge($config['installation']['statuses'], $config['installation']['next_statuses'])))) {
+    // Same guard: only recover when currently IN this stage
+    if (!$s4Entry && in_array($currentStatus, $config['installation']['statuses'])) {
         $s4Entry = $s3Exit ?: ($s2Exit ?: ($s1Exit ?: $createdTs));
     }
     $s4Evaluated = ($s4Entry !== null);
     $s4Exit  = $s4Evaluated ? $findExitTs($config['installation']['next_statuses'], $s4Entry) : null;
     if ($s4Evaluated && !$s4Exit && !in_array($currentStatus, $config['installation']['statuses'])) {
-        if (!empty($order['uat_submitted_at'])) $s4Exit = strtotime($order['uat_submitted_at']);
+        $s4Exit = safeTs($order['uat_submitted_at'] ?? null);
     }
     $s4Ongoing = ($s4Evaluated && $s4Exit === null && in_array($currentStatus, $config['installation']['statuses']));
     $s4EndTs   = $s4Exit ?: ($s4Ongoing ? $now : null);
@@ -439,14 +474,18 @@ function computeOrderTimelineStages(array $order, array $timeline): array {
 
     // Stage 5: Testing & Customer UAT
     $s5Entry = $findEntryTs($config['testing_uat']['statuses']);
-    if (!$s5Entry && (in_array($currentStatus, array_merge($config['testing_uat']['statuses'], $config['testing_uat']['next_statuses'])))) {
+    // Same guard: only recover when currently IN this stage
+    if (!$s5Entry && in_array($currentStatus, $config['testing_uat']['statuses'])) {
         $s5Entry = $s4Exit ?: ($s3Exit ?: ($s2Exit ?: ($s1Exit ?: $createdTs)));
     }
     $s5Evaluated = ($s5Entry !== null);
     $s5Exit  = $s5Evaluated ? $findExitTs($config['testing_uat']['next_statuses'], $s5Entry) : null;
     if ($s5Evaluated && !$s5Exit && !in_array($currentStatus, $config['testing_uat']['statuses'])) {
-        if (!empty($order['uat_accepted_at'])) $s5Exit = strtotime($order['uat_accepted_at']);
-        elseif (!empty($order['closed_date'])) $s5Exit = strtotime($order['closed_date']);
+        // Prefer precise DATETIME; fall back to closed_date with end-of-day to avoid
+        // losing up to 23h 59m due to strtotime() treating a bare DATE as midnight.
+        $s5Exit = safeTs($order['uat_accepted_at'] ?? null)
+               ?? (isset($order['closed_date']) && $order['closed_date']
+                   ? safeTs($order['closed_date'] . ' 23:59:59') : null);
     }
     $s5Ongoing = ($s5Evaluated && $s5Exit === null && in_array($currentStatus, $config['testing_uat']['statuses']));
     $s5EndTs   = $s5Exit ?: ($s5Ongoing ? $now : null);
@@ -476,13 +515,17 @@ function computeOrderTimelineStages(array $order, array $timeline): array {
     // Order-Level SLA Metrics
     $orderEndTs = $now;
     if ($isClosed) {
-        if (!empty($order['closed_date'])) {
-            $orderEndTs = strtotime($order['closed_date']);
-        } elseif (!empty($order['uat_accepted_at'])) {
+        if (!empty($order['uat_accepted_at'])) {
+            // Prefer the precise datetime of UAT acceptance
             $orderEndTs = strtotime($order['uat_accepted_at']);
+        } elseif (!empty($order['closed_date'])) {
+            // closed_date is a DATE column (no time part); use end-of-day so we don't
+            // lose up to 23h 59m from timezone-offset strtotime() on a bare date string.
+            $orderEndTs = strtotime($order['closed_date'] . ' 23:59:59');
         } elseif (!empty($order['updated_at'])) {
             $orderEndTs = strtotime($order['updated_at']);
         }
+        if ($orderEndTs === false || $orderEndTs <= 0) $orderEndTs = $now;
     }
     $rawOrderDurationSec = max(0, $orderEndTs - $createdTs);
     $totalPausedSec = (int)round($pausedHours * 3600);
@@ -497,10 +540,12 @@ function computeOrderTimelineStages(array $order, array $timeline): array {
 
     // Mutually Exclusive 4-Bucket Order SLA Status
     $orderSlaStatus = 'Within SLA';
-    if ($isCurrentlyPaused) {
-        $orderSlaStatus = 'Paused';
-    } elseif ($isOverallBreached) {
+    if ($isOverallBreached) {
         $orderSlaStatus = 'Breached';
+    } elseif ($isCurrentlyPaused) {
+        // Paused is checked after Breached: a paused order that has already
+        // exceeded its SLA target is still counted as Breached in analytics.
+        $orderSlaStatus = 'Paused';
     } elseif ($effectiveOrderDurationSec >= ($overallTargetSeconds * 0.8)) {
         $orderSlaStatus = 'At Risk';
     } else {
@@ -760,5 +805,213 @@ function computeComprehensiveSlaAnalytics(array $orders, PDO $db): array {
     ];
 }
 
+/**
+ * Check if a given date is a business working day (Mon-Fri, excluding public holidays).
+ */
+function isTzBusinessDay(DateTimeInterface $date): bool {
+    $dayOfWeek = (int)$date->format('N'); // 1 (Mon) to 7 (Sun)
+    if ($dayOfWeek >= 6) {
+        return false;
+    }
 
+    $ymd = $date->format('Y-m-d');
+    $md  = $date->format('m-d');
 
+    // Standard fixed Tanzanian Public Holidays
+    $fixedHolidays = [
+        '01-01', // New Year's Day
+        '01-12', // Zanzibar Revolution Day
+        '04-07', // Karume Day
+        '04-26', // Union Day
+        '05-01', // Worker's Day
+        '07-07', // Saba Saba Day
+        '08-08', // Nane Nane (Farmers' Day)
+        '10-14', // Nyerere Day
+        '12-09', // Independence & Republic Day
+        '12-25', // Christmas Day
+        '12-26', // Boxing Day
+    ];
+
+    return !in_array($md, $fixedHolidays, true);
+}
+
+/**
+ * Calculate 72-Hour (3 Business Days) UAT Deadline.
+ * Skips Saturdays, Sundays, and official public holidays.
+ */
+function calculateUatBusinessDeadline(?DateTimeInterface $start = null, int $businessDays = 3): DateTime {
+    $current = $start ? (new DateTime($start->format('Y-m-d H:i:s'))) : (new DateTime());
+    
+    // If start falls on a non-business day, advance to the next business day morning (08:00)
+    while (!isTzBusinessDay($current)) {
+        $current->modify('+1 day');
+        $current->setTime(8, 0, 0);
+    }
+
+    $daysAdded = 0;
+    while ($daysAdded < $businessDays) {
+        $current->modify('+1 day');
+        if (isTzBusinessDay($current)) {
+            $daysAdded++;
+        }
+    }
+
+    return $current;
+}
+
+/**
+ * Get UAT remaining countdown time information and badge HTML for an order.
+ */
+function getUatCountdownInfo(array $order): array {
+    $status = $order['status'] ?? '';
+    if ($status !== 'UAT') {
+        return [
+            'is_uat'        => false,
+            'is_expired'    => false,
+            'is_enterprise' => false,
+            'seconds_left'  => 0,
+            'hours_left'    => 0,
+            'deadline'      => null,
+            'badge_html'    => ''
+        ];
+    }
+
+    $isEnterprise = (
+        ($order['partner_category'] ?? '') === 'Enterprise Client' ||
+        ($order['partner_type'] ?? '') === 'Enterprise' ||
+        ($order['partner_type'] ?? '') === 'Government'
+    );
+    if ($isEnterprise) {
+        return [
+            'is_uat'        => true,
+            'is_expired'    => false,
+            'is_enterprise' => true,
+            'seconds_left'  => null,
+            'hours_left'    => null,
+            'deadline'      => null,
+            'badge_html'    => '<span class="badge" style="background:#4338ca;color:#fff;display:inline-flex;align-items:center;gap:4px;font-weight:600" title="Enterprise UAT — Routed to KAM for review and acceptance">🏢 Enterprise UAT (KAM Review)</span>'
+        ];
+    }
+
+    $now = time();
+    $deadlineStr = $order['uat_deadline'] ?? null;
+    $deadlineTs  = $deadlineStr ? strtotime($deadlineStr) : null;
+
+    if (!$deadlineTs) {
+        // Fallback: calculate from uat_submitted_at / uat_notified_at
+        $startStr = $order['uat_submitted_at'] ?? ($order['uat_notified_at'] ?? $order['updated_at'] ?? 'now');
+        $calcDl = calculateUatBusinessDeadline(new DateTime($startStr));
+        $deadlineTs = $calcDl->getTimestamp();
+        $deadlineStr = $calcDl->format('Y-m-d H:i:s');
+    }
+
+    $secondsLeft = $deadlineTs - $now;
+    $isExpired   = $secondsLeft <= 0;
+    $hoursLeft   = round($secondsLeft / 3600, 1);
+
+    if ($isExpired) {
+        $badge = '<span class="badge badge-danger" style="display:inline-flex;align-items:center;gap:4px;font-weight:700" title="UAT 72-Hour Working Days window elapsed">⚠️ UAT Expired (Auto-Closing)</span>';
+    } else {
+        $hrs = floor($secondsLeft / 3600);
+        $mins = floor(($secondsLeft % 3600) / 60);
+        $timeStr = "{$hrs}h {$mins}m";
+        $badgeClass = ($hrs < 12) ? 'badge-danger' : (($hrs < 24) ? 'badge-warning' : 'badge-info');
+        $badge = '<span class="badge ' . $badgeClass . '" style="display:inline-flex;align-items:center;gap:4px;font-weight:600" title="72-Hour Working Days UAT Auto-Acceptance Window. Deadline: ' . htmlspecialchars($deadlineStr) . '">⏱️ UAT: ' . $timeStr . ' left</span>';
+    }
+
+    return [
+        'is_uat'        => true,
+        'is_expired'    => $isExpired,
+        'seconds_left'  => $secondsLeft,
+        'hours_left'    => $hoursLeft,
+        'deadline'      => $deadlineStr,
+        'badge_html'    => $badge
+    ];
+}
+
+/**
+ * Check and auto-approve / auto-close all UAT orders whose 72 working-hour window has expired.
+ */
+function checkAndAutoApproveUatOrders(PDO $db): int {
+    try {
+        $stmt = $db->query("SELECT o.*, p.partner_type, p.partner_category FROM orders o LEFT JOIN partners p ON o.partner_id = p.id WHERE o.status = 'UAT'");
+        $uatOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (empty($uatOrders)) {
+            return 0;
+        }
+
+        $now = time();
+        $autoApprovedCount = 0;
+        $today = date('Y-m-d');
+
+        foreach ($uatOrders as $o) {
+            $isEnterprise = (
+                ($o['partner_category'] ?? '') === 'Enterprise Client' ||
+                ($o['partner_type'] ?? '') === 'Enterprise' ||
+                ($o['partner_type'] ?? '') === 'Government'
+            );
+            if ($isEnterprise) {
+                // Enterprise orders require explicit UAT form review and acceptance by KAM
+                continue;
+            }
+            $oid = (int)$o['id'];
+            $deadlineStr = $o['uat_deadline'] ?? null;
+            $deadlineTs = $deadlineStr ? strtotime($deadlineStr) : null;
+
+            if (!$deadlineTs) {
+                $startStr = $o['uat_submitted_at'] ?? ($o['uat_notified_at'] ?? $o['updated_at'] ?? null);
+                if ($startStr) {
+                    $calcDl = calculateUatBusinessDeadline(new DateTime($startStr));
+                    $deadlineTs = $calcDl->getTimestamp();
+                } else {
+                    $deadlineTs = $now - 1; // Expire immediately if missing start
+                }
+            }
+
+            if ($deadlineTs <= $now) {
+                // Auto-close order
+                $update = $db->prepare("UPDATE orders SET
+                    status = 'Closed',
+                    uat_accepted_at = NOW(),
+                    uat_accepted_by = NULL,
+                    closed_date = COALESCE(closed_date, ?),
+                    activation_date = COALESCE(activation_date, ?),
+                    billing_start_date = COALESCE(billing_start_date, ?),
+                    billing_trigger_date = COALESCE(billing_trigger_date, ?),
+                    is_active = 1,
+                    updated_at = NOW()
+                    WHERE id = ? AND status = 'UAT'");
+                $update->execute([$today, $today, $today, $today, $oid]);
+
+                // Record timeline entry
+                $db->prepare("INSERT INTO order_timeline (order_id, status, note, changed_by) VALUES (?,?,?,NULL)")
+                   ->execute([$oid, 'Closed', '72-Hour Working Days UAT window elapsed without partner objection. Order automatically accepted & service activated by System.']);
+
+                // Complete contractor assignment if not already completed
+                $db->prepare("UPDATE contractor_assignments SET status = 'Completed', completed_at = COALESCE(completed_at, NOW()) WHERE order_id = ? AND status != 'Completed'")
+                   ->execute([$oid]);
+
+                // Create active service record if active_services table exists
+                try {
+                    $svcStmt = $db->prepare("INSERT IGNORE INTO active_services (order_id, partner_id, customer_name, service_type, capacity, pop_location, activated_at, status) VALUES (?,?,?,?,?,?,NOW(),'Active')");
+                    $svcStmt->execute([$oid, $o['partner_id'], $o['customer_name'], $o['service_type'], $o['bandwidth'] ?: ($o['aggregate_capacity'] ?: 'Standard'), $o['pop_location'] ?: $o['customer_location']]);
+                } catch (Throwable $t) {}
+
+                // Queue notification
+                if (function_exists('queueOrderNotification')) {
+                    queueOrderNotification($oid, 'Service Activated');
+                }
+                if (function_exists('auditLog')) {
+                    auditLog("Order #$oid auto-accepted and closed via 72-Hour UAT SLA expiration", 'orders', $oid);
+                }
+
+                $autoApprovedCount++;
+            }
+        }
+
+        return $autoApprovedCount;
+    } catch (Throwable $e) {
+        error_log("Error in checkAndAutoApproveUatOrders: " . $e->getMessage());
+        return 0;
+    }
+}

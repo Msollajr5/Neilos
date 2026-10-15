@@ -4,8 +4,8 @@
 // ============================================================
 requireLogin();
 
-if (!isAdmin()) {
-    setFlash('danger', 'Access denied. System Administrator permission required.');
+if (!isAdmin() && !hasRole('Management', 'Project Manager') && !hasPermission('activity_logs.view')) {
+    setFlash('danger', 'Access denied. System Administrator or Manager permission required.');
     header('Location: ' . APP_URL . '/?page=dashboard');
     exit;
 }
@@ -25,8 +25,23 @@ $modulesList = $db->query("SELECT DISTINCT module FROM audit_logs WHERE module I
 $filterUser     = (int)($_GET['user_id'] ?? 0);
 $filterModule   = trim($_GET['module'] ?? '');
 $filterSearch   = trim($_GET['q'] ?? '');
-$filterDateFrom = trim($_GET['date_from'] ?? '');
-$filterDateTo   = trim($_GET['date_to'] ?? '');
+$filterPreset   = trim($_GET['preset'] ?? '');
+$filterDateFrom = trim($_GET['start_date'] ?? ($_GET['date_from'] ?? ''));
+$filterDateTo   = trim($_GET['end_date'] ?? ($_GET['date_to'] ?? ''));
+
+if ($filterPreset === 'today') {
+    $filterDateFrom = date('Y-m-d');
+    $filterDateTo   = date('Y-m-d');
+} elseif ($filterPreset === 'this_month') {
+    $filterDateFrom = date('Y-m-01');
+    $filterDateTo   = date('Y-m-t');
+} elseif ($filterPreset === 'last_month') {
+    $filterDateFrom = date('Y-m-01', strtotime('-1 month'));
+    $filterDateTo   = date('Y-m-t', strtotime('-1 month'));
+} elseif ($filterPreset === 'this_year') {
+    $filterDateFrom = date('Y-01-01');
+    $filterDateTo   = date('Y-12-31');
+}
 
 $where = "WHERE 1=1";
 $params = [];
