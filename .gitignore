@@ -1,0 +1,5 @@
+# Temporary and scratch files
+scratch/
+*.log
+storage/logs/*.log
+storage/backups/

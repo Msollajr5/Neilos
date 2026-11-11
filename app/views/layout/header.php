@@ -76,6 +76,25 @@ if ($currentPage === 'partners') {
             ],
         ],
         [
+            'label' => 'Sales & Support',
+            'items' => [
+                [
+                    'key'        => 'pipeline_management',
+                    'title'      => 'Pipeline Management',
+                    'url'        => APP_URL . '/?page=pipeline_management',
+                    'icon'       => 'chart',
+                    'permission' => 'dashboard.view',
+                ],
+                [
+                    'key'        => 'ticket_management',
+                    'title'      => 'Ticket Management',
+                    'url'        => APP_URL . '/?page=ticket_management',
+                    'icon'       => 'clock',
+                    'permission' => 'dashboard.view',
+                ],
+            ],
+        ],
+        [
             'label' => 'Partners & Commercial',
             'items' => [
                 [

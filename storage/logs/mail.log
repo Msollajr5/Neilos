@@ -48,3 +48,6 @@
 [2026-10-15 20:49:01] [INFO] Email sent successfully via SMTP | {"to":["erickmsolla0@gmail.com"],"subject":"Welcome to Neilos Partner Portal \u2014 Your Account Credentials","host":"mail.neilosnetwork.co.tz","port":465}
 [2026-10-15 20:50:33] [INFO] Email sent successfully via SMTP | {"to":["erickmsolla0@gmail.com"],"subject":"Security Alert: Your Password Was Changed","host":"mail.neilosnetwork.co.tz","port":465}
 [2026-10-15 21:23:10] [INFO] Email sent successfully via SMTP | {"to":["erickmsolla0@gmail.com"],"subject":"Your Neilos Partner Portal Credentials Have Been Updated","host":"mail.neilosnetwork.co.tz","port":465}
+[2026-10-17 23:20:43] [INFO] Email sent successfully via SMTP | {"to":["admin@neilosnetwork.co.tz"],"subject":"Reset Your Neilos Partner Portal Password (5-Minute Link)","host":"mail.neilosnetwork.co.tz","port":465}
+[2026-10-17 23:20:54] [INFO] Email sent successfully via SMTP | {"to":["admin@neilosnetwork.co.tz"],"subject":"Reset Your Neilos Partner Portal Password (5-Minute Link)","host":"mail.neilosnetwork.co.tz","port":465}
+[2026-10-17 23:56:49] [INFO] Email sent successfully via SMTP | {"to":["admin@neilosnetwork.co.tz"],"subject":"Reset Your Neilos Partner Portal Password (5-Minute Link)","host":"mail.neilosnetwork.co.tz","port":465}

@@ -46,21 +46,23 @@ if (!in_array($page, $publicRoutes)) {
 
     // Backend Route Security Guard: Enforce module-level permission
     $routePermissions = [
-        'dashboard'     => 'dashboard.view',
-        'new_order'     => 'orders.create',
-        'orders'        => 'orders.view',
-        'closed_orders' => 'orders.view',
-        'order_detail'  => 'orders.view',
-        'generate_sof'  => 'orders.view',
-        'contractor'    => 'contractors.view',
-        'kyc'           => 'kyc.view',
-        'sla_tracking'  => 'sla.view',
-        'reports'       => 'reports.view',
-        'partners'      => 'partners.view',
-        'contractors'   => 'contractors.manage',
-        'surveys'       => 'surveys.view',
-        'users'         => 'users.view',
-        'activity_logs' => 'activity_logs.view',
+        'dashboard'           => 'dashboard.view',
+        'new_order'           => 'orders.create',
+        'orders'              => 'orders.view',
+        'closed_orders'       => 'orders.view',
+        'order_detail'        => 'orders.view',
+        'generate_sof'        => 'orders.view',
+        'contractor'          => 'contractors.view',
+        'kyc'                 => 'kyc.view',
+        'sla_tracking'        => 'sla.view',
+        'reports'             => 'reports.view',
+        'partners'            => 'partners.view',
+        'contractors'         => 'contractors.manage',
+        'surveys'             => 'surveys.view',
+        'users'               => 'users.view',
+        'activity_logs'       => 'activity_logs.view',
+        'pipeline_management' => 'dashboard.view',
+        'ticket_management'   => 'dashboard.view',
     ];
 
     if (isset($routePermissions[$page])) {
@@ -94,14 +96,17 @@ $controllerMap = [
     'download'        => 'download',
     'sse'             => 'sse',
     // Administration Module
-    'partners'        => 'partners',
-    'contractors'     => 'contractors',
-    'users'           => 'users',
-    'activity_logs'   => 'activity_logs',
-    'api_account_info'=> 'api_account_info',
-    'settings'        => 'settings',
-    'ftth_bulk'       => 'ftth_bulk',
-    'price_book'      => 'price_book',
+    'partners'             => 'partners',
+    'contractors'          => 'contractors',
+    'users'                => 'users',
+    'activity_logs'        => 'activity_logs',
+    'api_account_info'     => 'api_account_info',
+    'settings'             => 'settings',
+    'ftth_bulk'            => 'ftth_bulk',
+    'price_book'           => 'price_book',
+    // NNL/SBE Business Intelligence Modules
+    'pipeline_management'  => 'pipeline_management',
+    'ticket_management'    => 'ticket_management',
 ];
 
 $controller = $controllerMap[$page] ?? 'dashboard';
