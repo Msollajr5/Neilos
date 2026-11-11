@@ -37,7 +37,7 @@
 |:---:|:---|:---:|:---|
 | 🏗️ | [Architecture Overview](#️-architecture-overview) | 📋 | [Core Modules](#-core-modules) |
 | 🛠️ | [Setup Instructions](#️-setup-instructions) | ⏰ | [Cron Jobs &amp; Automation](#-cron-jobs--automation) |
-| 🔐 | [Default Credentials](#-default-system-credentials) | 🎨 | [Design System](#-design-system) |
+| 🎨 | [Design System](#-design-system) | ✨ | [Key Features](#-key-features--highlights) |
 
 </div>
 
@@ -184,31 +184,6 @@ DocumentRoot "/path/to/Neilos/public"
 
 > [!TIP]
 > If using XAMPP, place the project in `C:\xampp\htdocs\Neilos` and access via `http://localhost/Neilos/public/`
-
----
-
-## 🔐 Default System Credentials
-
-> [!WARNING]
-> Change all default passwords immediately after first login in a production environment.
-
-<div align="center">
-
-| 👤 Username | 🔑 Password | 🎭 Role | 📛 Full Name | 🏢 Entity |
-|:------------|:-----------|:--------|:------------|:---------|
-| `admin` | `Admin@1234` | 🛡️ System Admin | System Administrator | Internal Admin |
-| `manager` | `Admin@1234` | 📊 Management | Operations Manager | Internal Operations |
-| `kam_john` | `Admin@1234` | 🤝 KAM | John KAM | Key Account Management |
-| `bsa_sarah` | `Admin@1234` | 🔧 BSA | Sarah BSA | Business Solutions Architecture |
-| `pm` | `Admin@1234` | 📋 Project Manager | Project Manager | Internal Delivery Lead |
-| `noc_support` | `Admin@1234` | 🖥️ NOC Support | NOC Support Lead | NOC Operations |
-| `commercial_dir` | `Admin@1234` | 💼 Commercial | Commercial Director | Executive / Commercial |
-| `billing` | `Admin@1234` | 💰 Billing | Finance / Billing | Finance &amp; Billing |
-| `partner_fastnet` | `Admin@1234` | 🌐 Partner User | Partner Admin (FastNet) | FastNet Communications Ltd |
-| `partner_afrilink` | `Admin@1234` | 🌐 Partner User | Partner Admin (Afrilink) | Afrilink Solutions Ltd |
-| `contractor1` | `Admin@1234` | 🔨 Contractor | Contractor Admin | Fiber Works Ltd |
-
-</div>
 
 ---
 
